@@ -62,7 +62,7 @@
 		}
 		timer = setTimeout(async () => {
 			try {
-				const res = await api.search({ phrase: q, type: 0, ignoreTypes: [], page: 1 });
+				const res = await api.search({ phrase: q, type: 0, ignoreTypes: 0, page: 1 });
 				titleResults = res.Titles.slice(0, 6);
 			} catch {
 				titleResults = [];
@@ -116,7 +116,7 @@
 				{:else}
 					{#if pageMatches.length}
 						<p class="grp">{t('cmd.pages')}</p>
-						{#each pageMatches as p, i (p.id)}
+						{#each pageMatches as p, i (`${p.id}-${i}`)}
 							<button
 								class="item"
 								class:sel={selected === i}
@@ -130,7 +130,7 @@
 					{/if}
 					{#if titleResults.length}
 						<p class="grp">{t('cmd.titles')}</p>
-						{#each titleResults as tt, i (tt.id)}
+						{#each titleResults as tt, i (`${tt.id}-${i}`)}
 							{@const idx = pageMatches.length + i}
 							<button
 								class="item"

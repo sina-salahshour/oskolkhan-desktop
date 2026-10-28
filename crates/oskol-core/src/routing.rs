@@ -12,6 +12,32 @@ use std::path::{Path, PathBuf};
 /// Default port. TODO(native-protocol): native routing may use other ports (`hell.p`?).
 pub const HTTPS_PORT: u16 = 443;
 
+/// Primary API route group: init + data + operator + UserStuff calls (native-protocol §11).
+pub const API_GROUP: i32 = 99999999;
+/// Secondary API route group.
+pub const API_GROUP_SECONDARY: i32 = 99999998;
+/// Cloudflare-fronting fallback IPs (native-protocol §11) — tried last, after every real row.
+pub const CF_FALLBACK_IPS: &[[u8; 4]] = &[[104, 18, 32, 47], [104, 21, 7, 50]];
+
+/// A Cloudflare-fronting fallback row: a negative-sentinel group or one of the CF IPs.
+pub fn is_cf_fallback(group: i32, ip: &IpAddr) -> bool {
+    group < 0 || matches!(ip, IpAddr::V4(v4) if CF_FALLBACK_IPS.contains(&v4.octets()))
+}
+
+/// Failover priority (lower = tried first): group 99999999 first, 99999998 second, other
+/// positive groups next, Cloudflare/negative-sentinel fallbacks last (native-protocol §11).
+fn route_priority(group: i32, ip: &IpAddr) -> u8 {
+    if is_cf_fallback(group, ip) {
+        3
+    } else {
+        match group {
+            API_GROUP => 0,
+            API_GROUP_SECONDARY => 1,
+            _ => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Route {
     /// SNI and Host.
@@ -23,10 +49,10 @@ pub struct Route {
     pub pin: Option<Vec<u8>>,
     /// `ItemGroup` id the route came from.
     pub group: i32,
-    /// Native `Item` flags kept for later protocol work.
-    /// TODO(native-protocol): meaning of iSS/isp/fr/isC/stk/dp/H is unknown; with `isp`
-    /// the bootstrap passes host index 1 (`ish`), which hints at domain fronting
-    /// (`front_host` would then be the real Host header).
+    /// Native `Item` flags. RESOLVED (native-protocol §10/§11): `iSS` = use https (always
+    /// set on the live API/media rows); the earlier domain-fronting reading of `isp`/`ish`
+    /// is withdrawn — SNI = Host = this route's own hostname, with no decoy. `front_host` is
+    /// kept only as captured metadata (`ish`/`HsN[H]`); the transport does not use it.
     pub iss: bool,
     pub isp: bool,
     #[serde(default)]
@@ -138,6 +164,9 @@ pub fn routes_from_interfacess(t: &Interfacess) -> Vec<Route> {
             }
         }
     }
+    // Order so API calls prefer group 99999999 and Cloudflare fallbacks are tried last; a
+    // stable sort keeps each group's original (weighted) row order.
+    out.sort_by_key(|r| route_priority(r.group, &r.ip));
     out
 }
 
@@ -178,6 +207,26 @@ impl RoutingTable {
     pub fn same_version(&self, t: &Interfacess) -> bool {
         self.hash != 0 && self.hash == t.hash && self.timestamp == t.time_stamp
     }
+    /// The primary API routes (group 99999999, then 99999998), excluding Cloudflare
+    /// fallbacks. These serve all init/data/operator/UserStuff calls (native-protocol §11).
+    /// Falls back to every route if the table has no dedicated API group.
+    pub fn primary_routes(&self) -> Vec<Route> {
+        let primary: Vec<Route> = self
+            .routes
+            .iter()
+            .filter(|r| {
+                !is_cf_fallback(r.group, &r.ip)
+                    && (r.group == API_GROUP || r.group == API_GROUP_SECONDARY)
+            })
+            .cloned()
+            .collect();
+        if primary.is_empty() {
+            self.routes.clone()
+        } else {
+            primary
+        }
+    }
+
     /// Refresh interval, clamped to something sane.
     pub fn refresh_secs(&self) -> u64 {
         match self.interupt {

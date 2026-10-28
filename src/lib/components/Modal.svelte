@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { fade, scale } from 'svelte/transition';
+	import { Dialog } from 'melt/builders';
 	import Icon from './Icon.svelte';
 
 	interface Props {
@@ -20,68 +20,68 @@
 		footer
 	}: Props = $props();
 
-	function close() {
-		open = false;
-		onclose?.();
-	}
-	function onkeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') close();
-	}
+	// Melt owns behaviour: focus trap, scroll lock, Esc, outside-click, a11y.
+	const dialog = new Dialog({
+		open: () => open,
+		onOpenChange: (v) => {
+			open = v;
+			if (!v) onclose?.();
+		}
+	});
 </script>
 
-<svelte:window {onkeydown} />
-
-{#if open}
-	<div class="backdrop" transition:fade={{ duration: 150 }}>
-		<button class="scrim" aria-label="close" onclick={close}></button>
-		<div
-			class="dialog"
-			role="dialog"
-			aria-modal="true"
-			aria-label={title}
-			style="max-inline-size:{width}"
-			transition:scale={{ duration: 200, start: 0.96 }}
-		>
-			{#if title}
-				<header>
-					<h3>{title}</h3>
-					<button class="x" aria-label="close" onclick={close}><Icon name="x" size={18} /></button>
-				</header>
-			{/if}
-			<div class="body">{@render children()}</div>
-			{#if footer}<footer>{@render footer()}</footer>{/if}
-		</div>
-	</div>
-{/if}
+<div {...dialog.overlay} class="melt-dialog-overlay"></div>
+<dialog {...dialog.content} class="dialog" aria-label={title} style="--w:{width}">
+	{#if title}
+		<header>
+			<h3>{title}</h3>
+			<button class="x" aria-label="close" onclick={() => (dialog.open = false)}>
+				<Icon name="x" size={18} />
+			</button>
+		</header>
+	{/if}
+	<div class="body">{@render children()}</div>
+	{#if footer}<footer>{@render footer()}</footer>{/if}
+</dialog>
 
 <style>
-	.backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: var(--z-modal);
-		display: grid;
-		place-items: center;
-		padding: var(--sp-4);
-	}
-	.scrim {
-		position: absolute;
-		inset: 0;
-		background: var(--scrim);
-		backdrop-filter: blur(6px);
-		border: none;
-		cursor: default;
-	}
 	.dialog {
-		position: relative;
-		inline-size: 100%;
+		position: fixed;
+		inset-block-start: 50%;
+		inset-inline-start: 50%;
+		translate: -50% -50%;
+		z-index: var(--z-modal);
+		inline-size: min(100% - var(--sp-5) * 2, var(--w));
+		max-inline-size: calc(100% - var(--sp-5) * 2);
+		max-block-size: 86vh;
+		margin: 0;
+		padding: 0;
 		background: var(--elevated);
+		color: var(--text);
 		border: 1px solid var(--border-strong);
 		border-radius: var(--r-lg);
 		box-shadow: var(--shadow-lg);
-		max-block-size: 86vh;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		opacity: 1;
+		transform: scale(1);
+		transition:
+			opacity var(--dur) var(--ease),
+			transform var(--dur) var(--ease);
+	}
+	.dialog:not([data-open]) {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	.dialog::backdrop {
+		background: transparent;
+	}
+	@starting-style {
+		.dialog[data-open] {
+			opacity: 0;
+			transform: scale(0.96);
+		}
 	}
 	header {
 		display: flex;
@@ -102,10 +102,17 @@
 		background: transparent;
 		color: var(--text-muted);
 		border: none;
+		transition:
+			background var(--dur-fast) var(--ease),
+			color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 	.x:hover {
 		background: var(--surface-2);
 		color: var(--text);
+	}
+	.x:active {
+		transform: scale(0.92);
 	}
 	.body {
 		padding: var(--sp-5);

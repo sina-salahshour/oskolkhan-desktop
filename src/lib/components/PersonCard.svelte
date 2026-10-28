@@ -43,6 +43,15 @@
 		overflow: hidden;
 		margin-inline: auto;
 		box-shadow: var(--shadow-sm);
+		transition:
+			transform var(--dur) var(--ease-out),
+			box-shadow var(--dur) var(--ease-out);
+	}
+	.person:hover .avatar {
+		transform: scale(1.06);
+		box-shadow:
+			var(--shadow-md),
+			0 0 0 2px var(--border-accent);
 	}
 	img {
 		position: absolute;
@@ -68,6 +77,10 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		transition: color var(--dur-fast) var(--ease);
+	}
+	.person:hover .name {
+		color: var(--accent);
 	}
 	.role {
 		font-size: 0.72rem;

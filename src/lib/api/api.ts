@@ -21,7 +21,7 @@ import type {
 export interface SearchArgs {
 	phrase: string;
 	type: number;
-	ignoreTypes: number[];
+	ignoreTypes: number;
 	page: number;
 }
 

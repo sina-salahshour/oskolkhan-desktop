@@ -20,6 +20,8 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 
 	let id = $derived(Number(page.params.id));
 
@@ -30,6 +32,7 @@
 	let failed = $state(false);
 	let expanded = $state(false);
 	let liked = $state(false);
+	let popping = $state(false);
 
 	async function load(targetId: number) {
 		loading = true;
@@ -98,6 +101,11 @@
 	async function toggleLike() {
 		if (!title) return;
 		liked = !liked;
+		if (liked) {
+			popping = false;
+			requestAnimationFrame(() => (popping = true));
+			toast.success(t('common.liked'));
+		}
 		try {
 			await api.like({ category: title.contenttype, item: id, on: liked, status: 1 });
 		} catch {
@@ -172,26 +180,21 @@
 						<Button variant="secondary" icon="download" onclick={playDefault}>
 							{t('common.download')}
 						</Button>
-						<Button
-							variant={liked ? 'outline' : 'ghost'}
-							size="icon"
-							icon={liked ? 'heart-filled' : 'heart'}
-							active={liked}
-							title={t('common.like')}
-							onclick={toggleLike}
-						/>
-						<Button
-							variant="ghost"
-							size="icon"
-							icon="share"
-							title={t('common.share')}
-							onclick={share}
-						/>
-						<Button
-							variant="ghost"
-							size="icon"
+						<span class="likewrap" class:pop={popping} onanimationend={() => (popping = false)}>
+							<IconButton
+								variant="surface"
+								icon={liked ? 'heart-filled' : 'heart'}
+								active={liked}
+								toggle
+								label={t('common.like')}
+								onclick={toggleLike}
+							/>
+						</span>
+						<IconButton variant="surface" icon="share" label={t('common.share')} onclick={share} />
+						<IconButton
+							variant="surface"
 							icon="external"
-							title={t('common.openExternal')}
+							label={t('common.openExternal')}
 							onclick={playDefault}
 						/>
 					</div>
@@ -234,8 +237,8 @@
 					<section>
 						<h2 class="section-title">{t('title.cast')}</h2>
 						<div class="castgrid">
-							{#each cast as c (c.id + c.title2)}
-								<PersonCard item={c} />
+							{#each cast as c, i (c.id + c.title2)}
+								<div class="stagger-in" style="--i:{Math.min(i, 12)}"><PersonCard item={c} /></div>
 							{/each}
 						</div>
 					</section>
@@ -281,8 +284,8 @@
 					<div class="recs">
 						<h3 class="section-title">{t('title.recommendations')}</h3>
 						<div class="recgrid">
-							{#each detail.recommended as r (r.id)}
-								<a class="rec" href={`/title/${r.id}`}>
+							{#each detail.recommended as r, i (`${r.id}-${i}`)}
+								<a class="rec stagger-in" style="--i:{Math.min(i, 12)}" href={`/title/${r.id}`}>
 									<Poster src={poster(r.img)} alt={r.title1} seed={r.id} label={r.title1} />
 									<span class="recname">{r.title1}</span>
 								</a>
@@ -431,6 +434,37 @@
 		font-weight: 600;
 		margin-block-start: var(--sp-2);
 		padding: 0;
+		cursor: pointer;
+		border-radius: var(--r-sm);
+		transition: color var(--dur-fast) var(--ease);
+	}
+	.link:hover {
+		color: var(--accent-strong);
+	}
+	.link:focus-visible,
+	.rec:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 3px;
+	}
+	.likewrap {
+		display: inline-flex;
+	}
+	.likewrap.pop :global(svg) {
+		animation: heart-pop 420ms var(--ease-spring) both;
+	}
+	@keyframes heart-pop {
+		0% {
+			transform: scale(1);
+		}
+		35% {
+			transform: scale(1.5) rotate(-8deg);
+		}
+		70% {
+			transform: scale(0.92);
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 	.castgrid {
 		display: grid;
@@ -472,6 +506,14 @@
 	}
 	.rec {
 		display: block;
+		border-radius: var(--r-md);
+		transition: transform var(--dur-fast) var(--ease);
+	}
+	.rec:hover {
+		transform: translateY(-3px);
+	}
+	.rec:hover .recname {
+		color: var(--text);
 	}
 	.recname {
 		display: block;

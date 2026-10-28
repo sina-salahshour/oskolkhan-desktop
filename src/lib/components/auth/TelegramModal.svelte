@@ -101,6 +101,13 @@
 		background: var(--text);
 		border-radius: var(--r-lg);
 		box-shadow: var(--shadow-md);
+		animation: qr-in var(--dur-slow, 250ms) var(--ease-out, var(--ease)) both;
+	}
+	@keyframes qr-in {
+		from {
+			opacity: 0;
+			transform: scale(0.94);
+		}
 	}
 	.grid {
 		display: grid;
@@ -127,6 +134,7 @@
 		background: var(--accent);
 		color: var(--on-accent);
 		border: 4px solid var(--text);
+		box-shadow: 0 2px 10px var(--accent-soft);
 	}
 	.url {
 		font-size: 0.8rem;

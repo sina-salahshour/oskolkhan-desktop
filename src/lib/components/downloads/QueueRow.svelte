@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
 	import { downloads, type DownloadItem } from '$lib/stores/downloads.svelte';
-	import { digits, fileSize, speed } from '$lib/util/format';
+	import { fileSize, speed } from '$lib/util/format';
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import Progress from '$lib/components/Progress.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
+	import AnimatedNumber from '$lib/components/AnimatedNumber.svelte';
 
 	interface Props {
 		item: DownloadItem;
@@ -48,21 +51,16 @@
 		</div>
 
 		{#if !library}
-			<div
-				class="bar"
-				role="progressbar"
-				aria-valuenow={item.progress}
-				aria-valuemin="0"
-				aria-valuemax="100"
-			>
-				<div
-					class="fill"
-					class:live={item.status === 'downloading'}
-					style:inline-size="{item.progress}%"
-				></div>
-			</div>
+			<Progress
+				value={item.progress}
+				tone={item.status === 'downloading' ? 'coin' : 'accent'}
+				glow={item.status === 'downloading'}
+				height="6px"
+			/>
 			<div class="meta">
-				<span class="latin">{digits(Math.round(item.progress))}%</span>
+				<span class="latin"
+					><AnimatedNumber value={Math.round(item.progress)} duration={500} />%</span
+				>
 				{#if item.status === 'downloading'}<span class="latin">{speed(item.speedKbps)}</span>{/if}
 				<span class="latin">{fileSize(item.sizeMb)}</span>
 			</div>
@@ -77,21 +75,14 @@
 				{t('common.play')}
 			</Button>
 		{:else}
-			<Button
-				variant="secondary"
-				size="icon"
-				onclick={() => downloads.toggle(item.id)}
-				title={item.status === 'downloading' ? t('downloads.pause') : t('downloads.resume')}
+			<IconButton
+				variant="surface"
 				icon={item.status === 'downloading' ? 'pause' : 'play'}
+				label={item.status === 'downloading' ? t('downloads.pause') : t('downloads.resume')}
+				onclick={() => downloads.toggle(item.id)}
 			/>
 		{/if}
-		<Button
-			variant="ghost"
-			size="icon"
-			icon="trash"
-			onclick={() => downloads.remove(item.id)}
-			title={t('common.delete')}
-		/>
+		<IconButton icon="trash" label={t('common.delete')} onclick={() => downloads.remove(item.id)} />
 	</div>
 </div>
 
@@ -116,10 +107,14 @@
 		background: var(--accent-soft);
 	}
 	.chk {
+		transition: transform var(--dur-fast) var(--ease-spring);
 		inline-size: 18px;
 		block-size: 18px;
 		accent-color: var(--accent);
 		flex-shrink: 0;
+	}
+	.chk:active {
+		transform: scale(0.85);
 	}
 	.main {
 		flex: 1;
@@ -146,21 +141,6 @@
 	.sub {
 		color: var(--text-muted);
 		font-size: 0.82rem;
-	}
-	.bar {
-		block-size: 6px;
-		border-radius: 999px;
-		background: var(--surface-3);
-		overflow: hidden;
-	}
-	.fill {
-		block-size: 100%;
-		border-radius: 999px;
-		background: linear-gradient(90deg, var(--accent-strong), var(--accent));
-		transition: inline-size 0.6s var(--ease);
-	}
-	.fill.live {
-		box-shadow: 0 0 10px var(--accent-soft);
 	}
 	.meta {
 		display: flex;

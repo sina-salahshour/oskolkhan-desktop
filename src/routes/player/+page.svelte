@@ -11,10 +11,19 @@
 	import Seekbar from '$lib/components/player/Seekbar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import Menu from '$lib/components/Menu.svelte';
+	import Slider from '$lib/components/Slider.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 
 	let stage = $state<HTMLDivElement | null>(null);
 	let controlsVisible = $state(true);
-	let menu = $state<'speed' | 'audio' | 'subs' | null>(null);
+	// Melt owns each menu's open/close/Esc/outside-click; we only track whether
+	// any is open so the auto-hide timer keeps the control bar alive.
+	let speedOpen = $state(false);
+	let audioOpen = $state(false);
+	let subsOpen = $state(false);
+	let anyMenuOpen = $derived(speedOpen || audioOpen || subsOpen);
 	let panel = $state<'style' | 'sync' | null>(null);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 	let holdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +70,7 @@
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
 		hideTimer = setTimeout(() => {
-			if (player.status === 'playing' && !menu && !panel) controlsVisible = false;
+			if (player.status === 'playing' && !anyMenuOpen && !panel) controlsVisible = false;
 		}, 3000);
 	}
 
@@ -83,7 +92,12 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (e.target instanceof HTMLInputElement) return;
+		// Don't hijack keys while a text input or a Melt slider has focus.
+		if (
+			e.target instanceof HTMLElement &&
+			(e.target.tagName === 'INPUT' || e.target.closest('[role="slider"],[data-melt-slider-root]'))
+		)
+			return;
 		switch (e.key) {
 			case ' ':
 			case 'k':
@@ -109,10 +123,8 @@
 				toggleFullscreen();
 				break;
 			case 'Escape':
-				if (menu || panel) {
-					menu = null;
-					panel = null;
-				}
+				// Melt closes any open menu itself; we only close the drawer.
+				if (panel) panel = null;
 				break;
 		}
 		showControls();
@@ -130,7 +142,6 @@
 
 	function togglePanel(which: 'style' | 'sync') {
 		panel = panel === which ? null : which;
-		menu = null;
 	}
 
 	let name = $derived(player.request.title?.persian ?? '');
@@ -143,6 +154,11 @@
 		{ value: 'outline', label: 'Outline' },
 		{ value: 'drop', label: 'Drop' },
 		{ value: 'raised', label: 'Raised' }
+	];
+	const FONT_OPTIONS = [
+		{ value: 'Vazirmatn', label: 'Vazirmatn' },
+		{ value: 'Estedad', label: 'Estedad' },
+		{ value: 'Inter', label: 'Inter' }
 	];
 
 	let subEdge = $derived.by(() => {
@@ -210,9 +226,11 @@
 	<!-- top bar -->
 	{#if controlsVisible}
 		<div class="top" transition:fly={{ y: -16, duration: 200 }}>
-			<button class="ctl" aria-label={t('common.back')} onclick={() => goto('/')}>
-				<Icon name="chevron-right" size={22} />
-			</button>
+			<Tooltip content={t('common.back')}>
+				<button class="ctl" aria-label={t('common.back')} onclick={() => goto('/')}>
+					<Icon name="chevron-right" size={22} />
+				</button>
+			</Tooltip>
 			<div class="titlebox">
 				<b>{name}</b>
 				{#if epLabel}<small>{epLabel}</small>{/if}
@@ -248,41 +266,55 @@
 
 			<div class="row">
 				<div class="left">
-					<button class="ctl" aria-label={t('common.play')} onclick={() => player.togglePlay()}>
-						<Icon name={player.status === 'playing' ? 'pause' : 'play-filled'} size={24} />
-					</button>
-					<button class="ctl" aria-label="prev" onclick={() => player.seekBy(-10)}>
-						<Icon name="rewind" size={20} />
-					</button>
-					<button class="ctl" aria-label="next" onclick={() => player.seekBy(10)}>
-						<Icon name="forward" size={20} />
-					</button>
-					{#if player.hasNext}
-						<button
-							class="ctl"
-							aria-label={t('player.nextEpisode')}
-							onclick={() => player.playNext()}
-						>
-							<Icon name="skip-next" size={20} />
+					<Tooltip content={t('common.play')}>
+						<button class="ctl" aria-label={t('common.play')} onclick={() => player.togglePlay()}>
+							<Icon name={player.status === 'playing' ? 'pause' : 'play-filled'} size={24} />
 						</button>
+					</Tooltip>
+					<Tooltip content="−10s">
+						<button class="ctl" aria-label="-10s" onclick={() => player.seekBy(-10)}>
+							<Icon name="rewind" size={20} />
+						</button>
+					</Tooltip>
+					<Tooltip content="+10s">
+						<button class="ctl" aria-label="+10s" onclick={() => player.seekBy(10)}>
+							<Icon name="forward" size={20} />
+						</button>
+					</Tooltip>
+					{#if player.hasNext}
+						<Tooltip content={t('player.nextEpisode')}>
+							<button
+								class="ctl"
+								aria-label={t('player.nextEpisode')}
+								onclick={() => player.playNext()}
+							>
+								<Icon name="skip-next" size={20} />
+							</button>
+						</Tooltip>
 					{/if}
 					<div class="vol">
-						<button class="ctl" aria-label={t('player.audio')} onclick={() => player.toggleMute()}>
-							<Icon
-								name={player.muted || player.volume === 0 ? 'volume-mute' : 'volume'}
-								size={20}
+						<Tooltip content={t('player.audio')}>
+							<button
+								class="ctl"
+								aria-label={t('player.audio')}
+								onclick={() => player.toggleMute()}
+							>
+								<Icon
+									name={player.muted || player.volume === 0 ? 'volume-mute' : 'volume'}
+									size={20}
+								/>
+							</button>
+						</Tooltip>
+						<div class="volwrap">
+							<Slider
+								min={0}
+								max={1}
+								step={0.05}
+								value={player.muted ? 0 : player.volume}
+								ariaLabel={t('player.audio')}
+								onchange={(v) => player.setVolume(v)}
 							/>
-						</button>
-						<input
-							class="volrange"
-							type="range"
-							min="0"
-							max="1"
-							step="0.05"
-							value={player.muted ? 0 : player.volume}
-							oninput={(e) => player.setVolume(Number(e.currentTarget.value))}
-							aria-label={t('player.audio')}
-						/>
+						</div>
 					</div>
 					<span class="time latin">
 						{timecode(player.currentTime)} / {timecode(player.duration)}
@@ -291,149 +323,151 @@
 
 				<div class="right">
 					<!-- speed -->
-					<div class="pop">
-						<button class="ctl txt" onclick={() => (menu = menu === 'speed' ? null : 'speed')}>
-							<Icon name="gauge" size={19} /><span class="latin">{player.rate}×</span>
-						</button>
-						{#if menu === 'speed'}
-							<div class="menu" transition:fly={{ y: 8, duration: 150 }}>
-								<p class="menuhint">{t('player.holdFor2x')}</p>
-								{#each SPEEDS as s (s)}
-									<button
-										class="mitem"
-										class:on={player.rate === s}
-										onclick={() => {
-											player.setRate(s);
-											menu = null;
-										}}
-									>
-										<span class="latin">{s}×</span>
-										{#if player.rate === s}<Icon name="check" size={16} />{/if}
-									</button>
-								{/each}
-							</div>
-						{/if}
-					</div>
+					<Menu placement="top" align="end" bind:open={speedOpen}>
+						{#snippet trigger(attrs, open)}
+							<button {...attrs} class="ctl txt" class:active={open} aria-label={t('player.speed')}>
+								<Icon name="gauge" size={19} /><span class="latin">{player.rate}×</span>
+							</button>
+						{/snippet}
+						{#snippet children(close)}
+							<p class="menuhint">{t('player.holdFor2x')}</p>
+							{#each SPEEDS as s (s)}
+								<button
+									class="mitem"
+									class:on={player.rate === s}
+									onclick={() => {
+										player.setRate(s);
+										close();
+									}}
+								>
+									<span class="latin">{s}×</span>
+									{#if player.rate === s}<Icon name="check" size={16} />{/if}
+								</button>
+							{/each}
+						{/snippet}
+					</Menu>
 
 					<!-- audio tracks -->
-					<div class="pop">
-						<button
-							class="ctl"
-							aria-label={t('player.audioTrack')}
-							onclick={() => (menu = menu === 'audio' ? null : 'audio')}
-						>
-							<Icon name="volume" size={19} />
-						</button>
-						{#if menu === 'audio'}
-							<div class="menu" transition:fly={{ y: 8, duration: 150 }}>
-								<p class="menuhead">{t('player.audioTrack')}</p>
-								{#each player.audioTracks as a (a.id)}
-									<button
-										class="mitem"
-										class:on={player.audioTrackId === a.id}
-										onclick={() => {
-											player.audioTrackId = a.id;
-											menu = null;
-										}}
-									>
-										<span>{a.label}</span>
-										{#if player.audioTrackId === a.id}<Icon name="check" size={16} />{/if}
-									</button>
-								{/each}
-								<button class="mitem ghost"
-									><Icon name="folder" size={16} />{t('player.externalAudio')}</button
+					<Menu placement="top" align="end" bind:open={audioOpen}>
+						{#snippet trigger(attrs, open)}
+							<button
+								{...attrs}
+								class="ctl"
+								class:active={open}
+								aria-label={t('player.audioTrack')}
+							>
+								<Icon name="volume" size={19} />
+							</button>
+						{/snippet}
+						{#snippet children(close)}
+							<p class="menuhead">{t('player.audioTrack')}</p>
+							{#each player.audioTracks as a (a.id)}
+								<button
+									class="mitem"
+									class:on={player.audioTrackId === a.id}
+									onclick={() => {
+										player.audioTrackId = a.id;
+										close();
+									}}
 								>
-								<label class="delay">
-									{t('player.audioDelay')}
-									<input
-										type="range"
-										min="-5000"
-										max="5000"
-										step="50"
-										value={player.audioDelayMs}
-										oninput={(e) => (player.audioDelayMs = Number(e.currentTarget.value))}
-									/>
-									<span class="latin">{digits(player.audioDelayMs)}ms</span>
-								</label>
+									<span>{a.label}</span>
+									{#if player.audioTrackId === a.id}<Icon name="check" size={16} />{/if}
+								</button>
+							{/each}
+							<button class="mitem ghost">
+								<Icon name="folder" size={16} />{t('player.externalAudio')}
+							</button>
+							<div class="split"></div>
+							<div class="menuslider">
+								<span class="mslabel">{t('player.audioDelay')}</span>
+								<Slider
+									min={-5000}
+									max={5000}
+									step={50}
+									value={player.audioDelayMs}
+									ariaLabel={t('player.audioDelay')}
+									valueText={`${digits(player.audioDelayMs)}ms`}
+									onchange={(v) => (player.audioDelayMs = v)}
+								/>
 							</div>
-						{/if}
-					</div>
+						{/snippet}
+					</Menu>
 
 					<!-- subtitles -->
-					<div class="pop">
+					<Menu placement="top" align="end" bind:open={subsOpen}>
+						{#snippet trigger(attrs, open)}
+							<button {...attrs} class="ctl" class:active={open} aria-label={t('player.subtitles')}>
+								<Icon name="subtitles" size={20} />
+							</button>
+						{/snippet}
+						{#snippet children(close)}
+							<p class="menuhead">{t('player.subtitles')}</p>
+							<button
+								class="mitem"
+								class:on={player.subtitleTrackId === null}
+								onclick={() => {
+									player.subtitleTrackId = null;
+									close();
+								}}
+							>
+								<span>{t('common.none')}</span>
+							</button>
+							{#each player.subtitleTracks as s (s.id)}
+								<button
+									class="mitem"
+									class:on={player.subtitleTrackId === s.id}
+									onclick={() => {
+										player.subtitleTrackId = s.id;
+										close();
+									}}
+								>
+									<span>{s.label}</span>
+									{#if player.subtitleTrackId === s.id}<Icon name="check" size={16} />{/if}
+								</button>
+							{/each}
+							<button class="mitem ghost">
+								<Icon name="folder" size={16} />{t('player.loadSubtitle')}
+							</button>
+							<button class="mitem ghost">
+								<Icon name="external" size={16} />{t('player.lanUpload')}
+							</button>
+							<div class="split"></div>
+							<button
+								class="mitem"
+								onclick={() => {
+									togglePanel('style');
+									close();
+								}}
+							>
+								<Icon name="sliders" size={16} />{t('player.subtitleStyle')}
+							</button>
+							<button
+								class="mitem"
+								onclick={() => {
+									togglePanel('sync');
+									close();
+								}}
+							>
+								<Icon name="gauge" size={16} />{t('player.subtitleSync')}
+							</button>
+						{/snippet}
+					</Menu>
+
+					<Tooltip content={t('player.pip')}>
 						<button
 							class="ctl"
-							aria-label={t('player.subtitles')}
-							onclick={() => (menu = menu === 'subs' ? null : 'subs')}
+							aria-label={t('player.pip')}
+							class:active={player.pip}
+							onclick={() => (player.pip = !player.pip)}
 						>
-							<Icon name="subtitles" size={20} />
+							<Icon name="pip" size={19} />
 						</button>
-						{#if menu === 'subs'}
-							<div class="menu" transition:fly={{ y: 8, duration: 150 }}>
-								<p class="menuhead">{t('player.subtitles')}</p>
-								<button
-									class="mitem"
-									class:on={player.subtitleTrackId === null}
-									onclick={() => {
-										player.subtitleTrackId = null;
-										menu = null;
-									}}
-								>
-									<span>{t('common.none')}</span>
-								</button>
-								{#each player.subtitleTracks as s (s.id)}
-									<button
-										class="mitem"
-										class:on={player.subtitleTrackId === s.id}
-										onclick={() => {
-											player.subtitleTrackId = s.id;
-											menu = null;
-										}}
-									>
-										<span>{s.label}</span>
-										{#if player.subtitleTrackId === s.id}<Icon name="check" size={16} />{/if}
-									</button>
-								{/each}
-								<button class="mitem ghost"
-									><Icon name="folder" size={16} />{t('player.loadSubtitle')}</button
-								>
-								<button class="mitem ghost"
-									><Icon name="external" size={16} />{t('player.lanUpload')}</button
-								>
-								<div class="split"></div>
-								<button
-									class="mitem"
-									onclick={() => {
-										togglePanel('style');
-										menu = null;
-									}}
-								>
-									<Icon name="sliders" size={16} />{t('player.subtitleStyle')}
-								</button>
-								<button
-									class="mitem"
-									onclick={() => {
-										togglePanel('sync');
-										menu = null;
-									}}
-								>
-									<Icon name="gauge" size={16} />{t('player.subtitleSync')}
-								</button>
-							</div>
-						{/if}
-					</div>
-
-					<button
-						class="ctl"
-						aria-label={t('player.pip')}
-						class:active={player.pip}
-						onclick={() => (player.pip = !player.pip)}
-					>
-						<Icon name="pip" size={19} />
-					</button>
-					<button class="ctl" aria-label={t('player.fullscreen')} onclick={toggleFullscreen}>
-						<Icon name="fullscreen" size={19} />
-					</button>
+					</Tooltip>
+					<Tooltip content={t('player.fullscreen')}>
+						<button class="ctl" aria-label={t('player.fullscreen')} onclick={toggleFullscreen}>
+							<Icon name="fullscreen" size={19} />
+						</button>
+					</Tooltip>
 				</div>
 			</div>
 		</div>
@@ -444,83 +478,76 @@
 		<div class="drawer" transition:fly={{ x: 40, duration: 220 }}>
 			<header>
 				<h3>{panel === 'style' ? t('player.subtitleStyle') : t('player.subtitleSync')}</h3>
-				<button class="ctl" aria-label={t('common.close')} onclick={() => (panel = null)}>
-					<Icon name="x" size={18} />
-				</button>
+				<Tooltip content={t('common.close')}>
+					<button class="ctl" aria-label={t('common.close')} onclick={() => (panel = null)}>
+						<Icon name="x" size={18} />
+					</button>
+				</Tooltip>
 			</header>
 
 			{#if panel === 'style'}
 				<div class="group">
-					<label class="fld"
-						>{t('player.font')}
-						<select bind:value={player.subtitleStyle.font}>
-							<option value="Vazirmatn">Vazirmatn</option>
-							<option value="Estedad">Estedad</option>
-							<option value="Inter">Inter</option>
-						</select>
-					</label>
-					<label class="fld"
-						>{t('player.fontSize')} <span class="latin">{digits(player.subtitleStyle.size)}%</span>
-						<input
-							type="range"
-							min="50"
-							max="220"
-							step="5"
-							bind:value={player.subtitleStyle.size}
-						/>
-					</label>
-					<label class="fld"
-						>{t('player.position')}
-						<span class="latin">{digits(player.subtitleStyle.position)}%</span>
-						<input
-							type="range"
-							min="0"
-							max="80"
-							step="1"
-							bind:value={player.subtitleStyle.position}
-						/>
-					</label>
 					<div class="fld">
-						{t('player.edge')}
-						<div class="segrow">
-							{#each EDGE_OPTIONS as e (e.value)}
-								<button
-									class="seg"
-									class:on={player.subtitleStyle.edge === e.value}
-									onclick={() => (player.subtitleStyle.edge = e.value)}>{e.label}</button
-								>
-							{/each}
-						</div>
-					</div>
-					<label class="fld"
-						>{t('player.background')}
-						<span class="latin">{digits(player.subtitleStyle.background)}%</span>
-						<input
-							type="range"
-							min="0"
-							max="100"
-							step="5"
-							bind:value={player.subtitleStyle.background}
+						<span class="fldlabel">{t('player.font')}</span>
+						<SegmentedControl
+							size="sm"
+							options={FONT_OPTIONS}
+							value={player.subtitleStyle.font}
+							onchange={(v) => (player.subtitleStyle.font = v)}
 						/>
-					</label>
-					<label class="fld"
-						>{t('settings.subtitleDefaults')}
+					</div>
+					<Slider
+						min={50}
+						max={220}
+						step={5}
+						value={player.subtitleStyle.size}
+						label={t('player.fontSize')}
+						valueText={`${digits(player.subtitleStyle.size)}%`}
+						onchange={(v) => (player.subtitleStyle.size = v)}
+					/>
+					<Slider
+						min={0}
+						max={80}
+						step={1}
+						value={player.subtitleStyle.position}
+						label={t('player.position')}
+						valueText={`${digits(player.subtitleStyle.position)}%`}
+						onchange={(v) => (player.subtitleStyle.position = v)}
+					/>
+					<div class="fld">
+						<span class="fldlabel">{t('player.edge')}</span>
+						<SegmentedControl
+							size="sm"
+							options={EDGE_OPTIONS}
+							value={player.subtitleStyle.edge}
+							onchange={(v) => (player.subtitleStyle.edge = v)}
+						/>
+					</div>
+					<Slider
+						min={0}
+						max={100}
+						step={5}
+						value={player.subtitleStyle.background}
+						label={t('player.background')}
+						valueText={`${digits(player.subtitleStyle.background)}%`}
+						onchange={(v) => (player.subtitleStyle.background = v)}
+					/>
+					<label class="fld colorfld">
+						<span class="fldlabel">{t('settings.subtitleDefaults')}</span>
 						<input type="color" bind:value={player.subtitleStyle.color} />
 					</label>
 				</div>
 			{:else}
 				<div class="group">
-					<label class="fld"
-						>{t('player.syncDelay')}
-						<span class="latin">{digits(player.subtitleSync.delayMs)}ms</span>
-						<input
-							type="range"
-							min="-10000"
-							max="10000"
-							step="100"
-							bind:value={player.subtitleSync.delayMs}
-						/>
-					</label>
+					<Slider
+						min={-10000}
+						max={10000}
+						step={100}
+						value={player.subtitleSync.delayMs}
+						label={t('player.syncDelay')}
+						valueText={`${digits(player.subtitleSync.delayMs)}ms`}
+						onchange={(v) => (player.subtitleSync.delayMs = v)}
+					/>
 					<label class="fld"
 						>{t('player.syncFps')}
 						<select bind:value={player.subtitleSync.fps}>
@@ -532,7 +559,7 @@
 						</select>
 					</label>
 					<div class="fld">
-						<span>{t('player.syncPoints')}</span>
+						<span class="fldlabel">{t('player.syncPoints')}</span>
 						<p class="hint">
 							{#if player.subtitleSync.points.length}
 								{digits(player.subtitleSync.points.length)}
@@ -603,6 +630,13 @@
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		backdrop-filter: blur(6px);
 		color: #fff;
+		animation: breathe 2.4s var(--ease-out) infinite;
+	}
+	@keyframes breathe {
+		50% {
+			transform: scale(1.06);
+			box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.04);
+		}
 	}
 	.loading .ring {
 		inline-size: 54px;
@@ -708,11 +742,20 @@
 		background: transparent;
 		color: #fff;
 		border-radius: var(--r-md);
-		transition: background var(--dur-fast) var(--ease);
+		transition:
+			background var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 		padding-inline: var(--sp-2);
 	}
 	.ctl:hover {
 		background: rgba(255, 255, 255, 0.12);
+	}
+	.ctl:active {
+		transform: scale(0.9);
+	}
+	.ctl:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 	.ctl.active {
 		color: var(--accent);
@@ -726,9 +769,8 @@
 		align-items: center;
 		gap: var(--sp-2);
 	}
-	.volrange {
-		inline-size: 84px;
-		accent-color: var(--accent);
+	.volwrap {
+		inline-size: 92px;
 	}
 	.time {
 		font-size: 0.82rem;
@@ -736,21 +778,7 @@
 		margin-inline-start: var(--sp-2);
 		white-space: nowrap;
 	}
-	.pop {
-		position: relative;
-	}
-	.menu {
-		position: absolute;
-		inset-block-end: calc(100% + 10px);
-		inset-inline-end: 0;
-		min-inline-size: 220px;
-		background: var(--elevated);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--r-md);
-		box-shadow: var(--shadow-lg);
-		padding: var(--sp-2);
-		color: var(--text);
-	}
+	/* menu items rendered inside the Menu popover (styles scoped to this page) */
 	.menuhead {
 		font-size: 0.72rem;
 		text-transform: uppercase;
@@ -777,6 +805,7 @@
 		border-radius: var(--r-sm);
 		font-size: 0.88rem;
 		text-align: start;
+		transition: background var(--dur-fast) var(--ease);
 	}
 	.mitem:hover {
 		background: var(--surface-2);
@@ -793,16 +822,16 @@
 		background: var(--border);
 		margin-block: var(--sp-2);
 	}
-	.delay {
+	.menuslider {
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-2);
 		padding: var(--sp-3);
+	}
+	.mslabel {
 		font-size: 0.8rem;
 		color: var(--text-muted);
-	}
-	.delay input {
-		accent-color: var(--accent);
+		font-weight: 600;
 	}
 	.next {
 		position: absolute;
@@ -866,8 +895,12 @@
 		font-size: 0.85rem;
 		font-weight: 600;
 	}
-	.fld input[type='range'] {
-		accent-color: var(--accent);
+	.fldlabel {
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+	.colorfld {
+		align-items: flex-start;
 	}
 	.fld select,
 	.fld input[type='color'] {
@@ -877,24 +910,6 @@
 		border-radius: var(--r-sm);
 		color: var(--text);
 		padding-inline: var(--sp-2);
-	}
-	.segrow {
-		display: flex;
-		gap: 4px;
-	}
-	.seg {
-		flex: 1;
-		block-size: 34px;
-		border: 1px solid var(--border);
-		background: var(--surface-2);
-		color: var(--text-muted);
-		border-radius: var(--r-sm);
-		font-size: 0.78rem;
-	}
-	.seg.on {
-		border-color: var(--accent);
-		color: var(--accent);
-		background: var(--accent-soft);
 	}
 	.hint {
 		font-size: 0.8rem;

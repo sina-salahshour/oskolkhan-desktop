@@ -10,11 +10,13 @@
 	import { status } from '$lib/stores/status.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import { preload } from '$lib/stores/preload.svelte';
+	import { ads } from '$lib/stores/ads.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import SplashOverlay from '$lib/components/SplashOverlay.svelte';
+	import Toaster from '$lib/components/Toaster.svelte';
 
 	let { children } = $props();
 
@@ -33,6 +35,11 @@
 	// Once the core is ready, warm the PreLoad config (lookup tables).
 	$effect(() => {
 		if (status.ready) preload.init();
+	});
+
+	// Warm the gamification profile (coins / VIP / streak) when signed in.
+	$effect(() => {
+		if (status.ready && session.isLoggedIn) ads.init();
 	});
 
 	// Global Cmd/Ctrl+K opens the command palette.
@@ -60,6 +67,7 @@
 
 <CommandPalette />
 <SplashOverlay />
+<Toaster />
 
 <style>
 	.shell {

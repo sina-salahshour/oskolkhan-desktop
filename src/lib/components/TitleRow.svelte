@@ -4,6 +4,7 @@
 	import TitleCard from './TitleCard.svelte';
 	import Skeleton from './Skeleton.svelte';
 	import Icon from './Icon.svelte';
+	import IconButton from './IconButton.svelte';
 
 	interface Props {
 		title: string;
@@ -32,12 +33,20 @@
 					>{t('common.seeAll')}<Icon name="chevron-left" size={15} /></a
 				>
 			{/if}
-			<button class="nav" aria-label="prev" onclick={() => nudge(-1)}>
-				<Icon name="chevron-right" size={18} />
-			</button>
-			<button class="nav" aria-label="next" onclick={() => nudge(1)}>
-				<Icon name="chevron-left" size={18} />
-			</button>
+			<IconButton
+				icon="chevron-right"
+				label={t('common.prev')}
+				variant="surface"
+				size="sm"
+				onclick={() => nudge(-1)}
+			/>
+			<IconButton
+				icon="chevron-left"
+				label={t('common.next')}
+				variant="surface"
+				size="sm"
+				onclick={() => nudge(1)}
+			/>
 		</div>
 	</header>
 
@@ -50,8 +59,8 @@
 				</div>
 			{/each}
 		{:else}
-			{#each items as item (item.id)}
-				<div class="cell">
+			{#each items as item, i (`${item.id}-${i}`)}
+				<div class="cell stagger-in" style="--i:{Math.min(i, 12)}">
 					<TitleCard title={item} progress={progressFor?.(item)} />
 				</div>
 			{/each}
@@ -86,21 +95,6 @@
 	}
 	.more:hover {
 		color: var(--accent);
-	}
-	.nav {
-		inline-size: 34px;
-		block-size: 34px;
-		display: grid;
-		place-items: center;
-		border-radius: var(--r-full);
-		background: var(--surface-2);
-		border: 1px solid var(--border);
-		color: var(--text-muted);
-		transition: all var(--dur-fast) var(--ease);
-	}
-	.nav:hover {
-		background: var(--surface-hover);
-		color: var(--text);
 	}
 	.scroller {
 		display: grid;

@@ -27,6 +27,18 @@
 		border-radius: var(--r-sm);
 		background: var(--surface-2);
 		border: 1px solid var(--border);
+		transition:
+			transform var(--dur-fast) var(--ease),
+			border-color var(--dur-fast) var(--ease),
+			background var(--dur-fast) var(--ease);
+	}
+	.rc:hover {
+		transform: translateY(-2px);
+		border-color: var(--border-strong);
+		background: var(--surface-3);
+	}
+	.rc:hover .dot {
+		box-shadow: 0 0 16px color-mix(in srgb, var(--c) 90%, transparent);
 	}
 	.dot {
 		inline-size: 8px;
@@ -34,6 +46,7 @@
 		border-radius: 50%;
 		background: var(--c);
 		box-shadow: 0 0 10px color-mix(in srgb, var(--c) 60%, transparent);
+		transition: box-shadow var(--dur) var(--ease);
 	}
 	.val {
 		font-family: var(--font-latin);

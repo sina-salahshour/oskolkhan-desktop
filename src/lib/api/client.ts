@@ -32,23 +32,28 @@ export const tauriClient: OskolApi = {
 		return invoke<CoreStatus>('core_status');
 	},
 	onStatus(cb) {
-		const unlisten = listen<CoreStatus>('core://status', (event) => cb(event.payload));
+		// Guard the event subscription: on some webviews the event channel isn't
+		// ready immediately, and a rejected listen() must not become an unhandled
+		// rejection (status polling in the store covers updates regardless).
+		const unlisten = listen<CoreStatus>('core://status', (event) => cb(event.payload)).catch(
+			() => () => {}
+		);
 		let cancelled = false;
-		unlisten.then((fn) => {
+		void unlisten.then((fn) => {
 			if (cancelled) fn();
 		});
 		return () => {
 			cancelled = true;
-			unlisten.then((fn) => fn());
+			void unlisten.then((fn) => fn());
 		};
 	},
 	importKickstart(path) {
 		return invoke<CoreStatus>('import_kickstart', { path });
 	},
 	retryBoot() {
-		// TODO(core): no retry command is defined in the contract yet; the core
-		// worker needs a `retry_boot` command that re-runs bootstrap.
-		return invoke<CoreStatus>('retry_boot');
+		// TODO(core): no dedicated retry command yet; fall back to re-reading status
+		// so the retry button degrades gracefully instead of throwing.
+		return invoke<CoreStatus>('retry_boot').catch(() => invoke<CoreStatus>('core_status'));
 	},
 
 	preload() {

@@ -1,4 +1,5 @@
 <script lang="ts" generics="T extends string | number">
+	import { Tabs } from 'melt/builders';
 	import Icon, { type IconName } from './Icon.svelte';
 
 	interface Option {
@@ -14,20 +15,33 @@
 	}
 	let { options, value = $bindable(), onchange, size = 'md' }: Props = $props();
 
-	function select(v: T) {
-		value = v;
-		onchange?.(v);
+	// Melt Tabs keys on strings; map our (possibly numeric) values through it so
+	// we inherit roving tabindex + arrow-key navigation + aria roles for free.
+	function keyOf(v: T | undefined): string {
+		return v === undefined ? '' : String(v);
 	}
+	function fromKey(k: string): T {
+		const match = options.find((o) => String(o.value) === k);
+		return (match ? match.value : (k as T)) as T;
+	}
+
+	const tabs = new Tabs<string>({
+		value: () => keyOf(value) || keyOf(options[0]?.value),
+		onValueChange: (k) => {
+			const v = fromKey(k);
+			value = v;
+			onchange?.(v);
+		}
+	});
 </script>
 
-<div class="seg {size}" role="tablist">
+<div {...tabs.triggerList} class="seg {size}">
 	{#each options as opt (opt.value)}
+		{@const k = String(opt.value)}
 		<button
-			type="button"
-			role="tab"
-			aria-selected={value === opt.value}
-			class:active={value === opt.value}
-			onclick={() => select(opt.value)}
+			{...tabs.getTrigger(k)}
+			class="seg-btn"
+			class:active={tabs.value === k}
 			title={opt.label}
 		>
 			{#if opt.icon}<Icon name={opt.icon} size={size === 'sm' ? 15 : 17} />{/if}
@@ -45,7 +59,7 @@
 		padding: 3px;
 		gap: 2px;
 	}
-	button {
+	.seg-btn {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--sp-2);
@@ -55,22 +69,28 @@
 		border-radius: var(--r-sm);
 		font-weight: 600;
 		font-size: 0.86rem;
-		transition: all var(--dur-fast) var(--ease);
+		transition:
+			background var(--dur-fast) var(--ease),
+			color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 		white-space: nowrap;
 	}
-	.md button {
+	.md .seg-btn {
 		padding-inline: var(--sp-4);
 		block-size: 34px;
 	}
-	.sm button {
+	.sm .seg-btn {
 		padding-inline: var(--sp-3);
 		block-size: 28px;
 		font-size: 0.8rem;
 	}
-	button:hover {
+	.seg-btn:hover {
 		color: var(--text);
 	}
-	button.active {
+	.seg-btn:active {
+		transform: scale(0.96);
+	}
+	.seg-btn.active {
 		background: var(--surface-hover);
 		color: var(--text);
 		box-shadow: var(--shadow-sm);

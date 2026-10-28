@@ -7,6 +7,7 @@
 	import { preload } from '$lib/stores/preload.svelte';
 	import Button from './Button.svelte';
 	import Icon from './Icon.svelte';
+	import { fade, fly } from 'svelte/transition';
 
 	interface Props {
 		items: GenericTitle[];
@@ -52,33 +53,35 @@
 		{/key}
 		<div class="veil"></div>
 
-		<div class="content">
-			<span class="kicker"><Icon name="star-filled" size={14} />{t('home.hero.badge')}</span>
-			<h2 class="title">{name}</h2>
-			<div class="facts latin">
-				{#if current.rank > 0}
-					<span class="rank"><Icon name="star-filled" size={14} />{rankText(current.rank)}</span>
+		{#key current.id}
+			<div class="content" in:fly={{ y: 14, duration: 250 }} out:fade={{ duration: 120 }}>
+				<span class="kicker"><Icon name="star-filled" size={14} />{t('home.hero.badge')}</span>
+				<h2 class="title">{name}</h2>
+				<div class="facts latin">
+					{#if current.rank > 0}
+						<span class="rank"><Icon name="star-filled" size={14} />{rankText(current.rank)}</span>
+					{/if}
+					{#if current.Year}<span>{year(current.Year)}</span>{/if}
+					{#if current.votes}<span>{compact(current.votes)}</span>{/if}
+				</div>
+				{#if genres.length}
+					<p class="genres">{genres.join(' · ')}</p>
 				{/if}
-				{#if current.Year}<span>{year(current.Year)}</span>{/if}
-				{#if current.votes}<span>{compact(current.votes)}</span>{/if}
+				<p class="desc">{current.Description}</p>
+				<div class="cta">
+					<Button variant="primary" size="lg" icon="play-filled" href={`/player?id=${current.id}`}>
+						{t('common.play')}
+					</Button>
+					<Button variant="secondary" size="lg" icon="info" href={`/title/${current.id}`}>
+						{t('common.more')}
+					</Button>
+				</div>
 			</div>
-			{#if genres.length}
-				<p class="genres">{genres.join(' · ')}</p>
-			{/if}
-			<p class="desc">{current.Description}</p>
-			<div class="cta">
-				<Button variant="primary" size="lg" icon="play-filled" href={`/player?id=${current.id}`}>
-					{t('common.play')}
-				</Button>
-				<Button variant="secondary" size="lg" icon="info" href={`/title/${current.id}`}>
-					{t('common.more')}
-				</Button>
-			</div>
-		</div>
+		{/key}
 
 		{#if items.length > 1}
 			<div class="dots">
-				{#each items as it, i (it.id)}
+				{#each items as it, i (`${it.id}-${i}`)}
 					<button
 						class="dot"
 						class:on={i === index}
@@ -203,12 +206,22 @@
 		gap: var(--sp-2);
 	}
 	.dot {
+		cursor: pointer;
 		inline-size: 9px;
 		block-size: 9px;
 		border-radius: 50%;
 		background: rgba(255, 255, 255, 0.3);
 		border: none;
-		transition: all var(--dur) var(--ease);
+		transition:
+			inline-size var(--dur) var(--ease-spring),
+			background var(--dur) var(--ease);
+	}
+	.dot:hover:not(.on) {
+		background: rgba(255, 255, 255, 0.55);
+	}
+	.dot:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 	.dot.on {
 		inline-size: 26px;

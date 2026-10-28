@@ -16,7 +16,7 @@
 		loading = true;
 		failed = false;
 		try {
-			data = await api.home(1);
+			data = await api.home(0);
 		} catch {
 			failed = true;
 		} finally {
@@ -56,13 +56,15 @@
 		{#if hero.length}
 			<HeroCarousel items={hero} />
 		{/if}
-		{#each rows as section (section.id)}
-			<TitleRow
-				title={section.title}
-				items={section.recently}
-				moreHref={section.hasmore ? `/explore?more=${section.moreendpoint}` : undefined}
-				progressFor={progressFor(section.type)}
-			/>
+		{#each rows as section, i (`${section.id}-${i}`)}
+			<div class="stagger-in" style="--i:{Math.min(i, 12)}">
+				<TitleRow
+					title={section.title}
+					items={section.recently}
+					moreHref={section.hasmore ? `/explore?more=${section.moreendpoint}` : undefined}
+					progressFor={progressFor(section.type)}
+				/>
+			</div>
 		{/each}
 		{#if rows.length === 0 && hero.length === 0}
 			<p class="empty muted">{t('home.empty')}</p>

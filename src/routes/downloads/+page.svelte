@@ -120,8 +120,10 @@
 			<EmptyState icon="download" title={t('downloads.empty')} />
 		{:else}
 			<div class="list">
-				{#each downloads.queue as item (item.id)}
-					<QueueRow {item} {selecting} />
+				{#each downloads.queue as item, i (`${item.id}-${i}`)}
+					<div class="stagger-in" style="--i:{Math.min(i, 12)}">
+						<QueueRow {item} {selecting} />
+					</div>
 				{/each}
 			</div>
 		{/if}
@@ -130,8 +132,10 @@
 			<EmptyState icon="film" title={t('downloads.libraryEmpty')} />
 		{:else}
 			<div class="list">
-				{#each downloads.library as item (item.id)}
-					<QueueRow {item} library />
+				{#each downloads.library as item, i (`${item.id}-${i}`)}
+					<div class="stagger-in" style="--i:{Math.min(i, 12)}">
+						<QueueRow {item} library />
+					</div>
 				{/each}
 			</div>
 		{/if}
@@ -143,8 +147,8 @@
 			>
 		</div>
 		<div class="groups">
-			{#each downloads.groups as g (g.id)}
-				<article class="gcard">
+			{#each downloads.groups as g, i (`${g.id}-${i}`)}
+				<article class="gcard stagger-in" style="--i:{Math.min(i, 12)}">
 					<h3 class="gname">{g.name}</h3>
 					<p class="gline"><Icon name="folder" size={16} /><span class="latin">{g.folder}</span></p>
 					<div class="gmeta">

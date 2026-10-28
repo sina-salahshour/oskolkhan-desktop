@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorText } from '$lib/util/err';
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { GenericTitle, GetMore } from '$lib/api';
@@ -11,6 +12,7 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import Progress from '$lib/components/Progress.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 
 	interface Props {
@@ -39,7 +41,7 @@
 			const res = await load();
 			items = res.items;
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			loading = false;
 		}
@@ -137,14 +139,24 @@
 		<EmptyState icon={emptyIcon} title={emptyTitle} />
 	{:else}
 		<div class="grid">
-			{#each items as it (it.id)}
-				<div class="cell" class:selectable={selectMode} class:picked={selected.has(it.id)}>
+			{#each items as it, i (`${it.id}-${i}`)}
+				<div
+					class="cell stagger-in"
+					style="--i:{Math.min(i, 12)}"
+					class:selectable={selectMode}
+					class:picked={selected.has(it.id)}
+				>
 					<TitleCard title={it} progress={showProgress ? progressOf(it.id) : undefined} />
 					{#if showProgress && !selectMode}
-						<p class="resume">
-							<Icon name="play" size={12} />
-							{t('history.continueFrom', { t: digits(Math.round(progressOf(it.id) * 100)) + '%' })}
-						</p>
+						<div class="resume">
+							<Progress value={progressOf(it.id) * 100} tone="accent" height="3px" />
+							<p class="resume-text">
+								<Icon name="play" size={12} />
+								{t('history.continueFrom', {
+									t: digits(Math.round(progressOf(it.id) * 100)) + '%'
+								})}
+							</p>
+						</div>
 					{/if}
 					{#if selectMode}
 						<button
@@ -228,9 +240,14 @@
 	}
 	.resume {
 		display: flex;
+		flex-direction: column;
+		gap: var(--sp-1);
+		margin-block-start: var(--sp-2);
+	}
+	.resume-text {
+		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-block-start: var(--sp-1);
 		color: var(--text-muted);
 		font-size: 0.74rem;
 	}
@@ -255,11 +272,16 @@
 		color: var(--on-accent);
 		transition:
 			background var(--dur) var(--ease),
-			border-color var(--dur) var(--ease);
+			border-color var(--dur) var(--ease),
+			transform var(--dur) var(--ease-spring);
 	}
 	.picked .box {
 		background: var(--accent);
 		border-color: var(--accent);
+		transform: scale(1.12);
+	}
+	.pick:active .box {
+		transform: scale(0.85);
 	}
 	.confirm-text {
 		color: var(--text-muted);

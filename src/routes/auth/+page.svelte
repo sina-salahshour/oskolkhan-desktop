@@ -82,39 +82,45 @@
 		<div class="divider"><span>{t('auth.or')}</span></div>
 
 		<div class="alt">
-			<Button
-				variant="secondary"
-				size="lg"
-				icon="google"
-				block
-				loading={busy === 'google'}
-				disabled={!!busy && busy !== 'google'}
-				onclick={() => run('google', () => api.authGoogle())}
-			>
-				{t('auth.loginGoogle')}
-			</Button>
-			<Button
-				variant="secondary"
-				size="lg"
-				icon="telegram"
-				block
-				disabled={!!busy}
-				onclick={() => (telegramOpen = true)}
-			>
-				{t('auth.loginTelegram')}
-			</Button>
-			{#if preload.enableGuest}
+			<div class="stagger-in" style="--i:1">
 				<Button
-					variant="ghost"
+					variant="secondary"
 					size="lg"
-					icon="user"
+					icon="google"
 					block
-					loading={busy === 'guest'}
-					disabled={!!busy && busy !== 'guest'}
-					onclick={() => run('guest', () => api.authGuest())}
+					loading={busy === 'google'}
+					disabled={!!busy && busy !== 'google'}
+					onclick={() => run('google', () => api.authGoogle())}
 				>
-					{t('auth.loginGuest')}
+					{t('auth.loginGoogle')}
 				</Button>
+			</div>
+			<div class="stagger-in" style="--i:2">
+				<Button
+					variant="secondary"
+					size="lg"
+					icon="telegram"
+					block
+					disabled={!!busy}
+					onclick={() => (telegramOpen = true)}
+				>
+					{t('auth.loginTelegram')}
+				</Button>
+			</div>
+			{#if preload.enableGuest}
+				<div class="stagger-in" style="--i:3">
+					<Button
+						variant="ghost"
+						size="lg"
+						icon="user"
+						block
+						loading={busy === 'guest'}
+						disabled={!!busy && busy !== 'guest'}
+						onclick={() => run('guest', () => api.authGuest())}
+					>
+						{t('auth.loginGuest')}
+					</Button>
+				</div>
 				{#if preload.data?.GuestNotice}
 					<p class="notice">{preload.data.GuestNotice}</p>
 				{/if}
@@ -128,7 +134,7 @@
 <style>
 	.screen {
 		position: relative;
-		min-height: 100vh;
+		min-block-size: 100vh;
 		display: grid;
 		place-items: center;
 		padding: var(--sp-5);
@@ -177,6 +183,14 @@
 			transform: translateY(16px) scale(0.98);
 		}
 	}
+	@keyframes shake {
+		25% {
+			transform: translateX(-4px);
+		}
+		75% {
+			transform: translateX(4px);
+		}
+	}
 	.logo {
 		align-self: center;
 		display: grid;
@@ -187,6 +201,10 @@
 		background: var(--accent);
 		color: var(--on-accent);
 		box-shadow: 0 8px 28px var(--accent-soft);
+		transition: transform var(--dur) var(--ease-spring, var(--ease));
+	}
+	.logo:hover {
+		transform: rotate(-6deg) scale(1.06);
 	}
 	h1 {
 		text-align: center;
@@ -206,6 +224,7 @@
 		gap: var(--sp-3);
 	}
 	.error {
+		animation: shake 0.32s var(--ease);
 		display: flex;
 		align-items: center;
 		gap: var(--sp-2);

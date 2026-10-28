@@ -26,7 +26,7 @@ pub struct DohResolver {
 
 impl DohResolver {
     pub fn new() -> Self {
-        let http = reqwest::Client::builder()
+        let http = maybe_bind_interface(reqwest::Client::builder())
             .use_preconfigured_tls(crate::tls::default_config())
             .timeout(Duration::from_secs(6))
             .no_proxy()
@@ -103,9 +103,24 @@ impl Resolve for DohResolver {
     }
 }
 
+/// Dev/testing escape hatch: when `OSKOL_BIND_INTERFACE` is set (e.g. `wlan0`), bind every
+/// HTTP client to that network interface (SO_BINDTODEVICE). On a machine whose default route
+/// is a full-tunnel VPN (tun0) that exits outside Iran, this lets the app reach the Iran-only
+/// backend through the physical uplink, bypassing the tunnel. Unset in normal use → no-op.
+pub(crate) fn maybe_bind_interface(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    match std::env::var("OSKOL_BIND_INTERFACE") {
+        Ok(iface) if !iface.trim().is_empty() => {
+            let iface = iface.trim().to_string();
+            tracing::info!("OSKOL_BIND_INTERFACE set: binding HTTP clients to {iface}");
+            builder.interface(&iface)
+        }
+        _ => builder,
+    }
+}
+
 /// HTTP client for kickstart sources and other public endpoints (DoH resolution).
 pub fn bootstrap_client(resolver: &DohResolver) -> reqwest::Client {
-    reqwest::Client::builder()
+    maybe_bind_interface(reqwest::Client::builder())
         .use_preconfigured_tls(crate::tls::default_config())
         .dns_resolver(Arc::new(resolver.clone()))
         .connect_timeout(Duration::from_secs(5))

@@ -7,6 +7,7 @@
 	import Poster from './Poster.svelte';
 	import Badge from './Badge.svelte';
 	import Icon from './Icon.svelte';
+	import Progress from './Progress.svelte';
 
 	interface Props {
 		title: GenericTitle;
@@ -46,7 +47,7 @@
 			<div class="ep latin">{epLabel}</div>
 		{/if}
 		{#if progress !== undefined}
-			<div class="bar"><span style="inline-size:{Math.round(progress * 100)}%"></span></div>
+			<div class="bar"><Progress value={progress * 100} tone="accent" height="3px" /></div>
 		{/if}
 	</div>
 	<div class="meta">
@@ -62,6 +63,18 @@
 	.card {
 		display: block;
 		inline-size: 100%;
+		border-radius: var(--r-md);
+	}
+	.card:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 3px;
+	}
+	.art :global(img) {
+		transition: transform var(--dur-slow) var(--ease-out);
+	}
+	.card:hover .art :global(img),
+	.card:focus-visible .art :global(img) {
+		transform: scale(1.06);
 	}
 	.art {
 		position: relative;
@@ -72,7 +85,8 @@
 			transform var(--dur) var(--ease),
 			box-shadow var(--dur) var(--ease);
 	}
-	.card:hover .art {
+	.card:hover .art,
+	.card:focus-visible .art {
 		transform: translateY(-4px);
 		box-shadow: var(--shadow-md);
 	}
@@ -85,7 +99,8 @@
 		opacity: 0;
 		transition: opacity var(--dur) var(--ease);
 	}
-	.card:hover .overlay {
+	.card:hover .overlay,
+	.card:focus-visible .overlay {
 		opacity: 1;
 	}
 	.play {
@@ -97,10 +112,11 @@
 		background: var(--accent);
 		color: var(--on-accent);
 		box-shadow: 0 6px 20px var(--accent-glow);
-		transform: scale(0.8);
-		transition: transform var(--dur) var(--ease);
+		transform: scale(0.7);
+		transition: transform var(--dur) var(--ease-spring);
 	}
-	.card:hover .play {
+	.card:hover .play,
+	.card:focus-visible .play {
 		transform: scale(1);
 	}
 	.rank {
@@ -145,13 +161,7 @@
 		position: absolute;
 		inset-block-end: 0;
 		inset-inline: 0;
-		block-size: 3px;
 		background: rgba(0, 0, 0, 0.5);
-	}
-	.bar span {
-		display: block;
-		block-size: 100%;
-		background: var(--accent);
 	}
 	.meta {
 		margin-block-start: var(--sp-2);

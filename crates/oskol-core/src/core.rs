@@ -302,10 +302,14 @@ impl Core {
             tracing::warn!("interfacess produced no routes; keeping current table");
             return;
         }
+        // Keep the current route active if it is still a listed primary API route; otherwise
+        // pick a healthy group-99999999 route (native-protocol §11), so API calls start on
+        // the API group rather than a media/content row.
+        let primary = table.primary_routes();
         let current = self.backend.active_route().map(|r| r.key());
-        let preferred = match current.filter(|k| table.routes.iter().any(|r| &r.key() == k)) {
+        let preferred = match current.filter(|k| primary.iter().any(|r| &r.key() == k)) {
             Some(k) => Some(k),
-            None => self.backend.first_healthy(&table.routes).await.map(|r| r.key()),
+            None => self.backend.first_healthy(&primary).await.map(|r| r.key()),
         };
         if let Err(e) = self.cache.save(&table) {
             tracing::warn!(error = %e, "could not cache routing table");
@@ -438,7 +442,7 @@ impl Core {
         if table.routes.is_empty() {
             return Ok(false);
         }
-        let healthy = self.backend.first_healthy(&table.routes).await;
+        let healthy = self.backend.first_healthy(&table.primary_routes()).await;
         self.install_interfacess(t).await;
         if let Some(h) = healthy {
             self.backend.set_table(self.backend.table().as_ref().clone(), Some(&h.key()));

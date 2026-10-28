@@ -7,6 +7,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
+	import Slider from '$lib/components/Slider.svelte';
 
 	const CACHE_KEY = 'oskol:cache';
 	const DEVICE_ID = 'a1b2c3d4e5f6';
@@ -30,10 +31,6 @@
 	}
 	function setSeriesView(v: ViewMode) {
 		ui.seriesView = v;
-		ui.persist();
-	}
-	function setNum(key: 'size' | 'position' | 'background', e: Event) {
-		ui.subtitle[key] = Number((e.target as HTMLInputElement).value);
 		ui.persist();
 	}
 	function clearCache() {
@@ -60,7 +57,7 @@
 <div class="page">
 	<h1 class="title">{t('settings.title')}</h1>
 
-	<section class="card">
+	<section class="card stagger-in" style="--i:0">
 		<h2 class="section-title">{t('settings.appearance')}</h2>
 		<div class="row">
 			<span class="lbl">{t('settings.theme')}</span>
@@ -100,7 +97,7 @@
 		</div>
 	</section>
 
-	<section class="card">
+	<section class="card stagger-in" style="--i:1">
 		<h2 class="section-title">{t('settings.playback')}</h2>
 		<div class="row">
 			<span class="lbl">{t('settings.movieView')}</span>
@@ -127,7 +124,7 @@
 		</div>
 	</section>
 
-	<section class="card">
+	<section class="card stagger-in" style="--i:2">
 		<h2 class="section-title">{t('settings.subtitleDefaults')}</h2>
 		<div class="preview-wrap">
 			<div class="preview" aria-hidden="true">
@@ -155,32 +152,26 @@
 				}}
 			/>
 		</div>
-		<div class="row">
-			<span class="lbl">{t('player.fontSize')}</span>
-			<label class="slider">
-				<input
-					type="range"
-					min="50"
-					max="200"
-					step="5"
-					value={ui.subtitle.size}
-					oninput={(e) => setNum('size', e)}
-				/>
-				<span class="val latin">{digits(ui.subtitle.size)}%</span>
-			</label>
+		<div class="row stack">
+			<Slider
+				min={50}
+				max={200}
+				step={5}
+				bind:value={ui.subtitle.size}
+				label={t('player.fontSize')}
+				valueText={`${digits(ui.subtitle.size)}%`}
+				onchange={() => ui.persist()}
+			/>
 		</div>
-		<div class="row">
-			<span class="lbl">{t('player.position')}</span>
-			<label class="slider">
-				<input
-					type="range"
-					min="0"
-					max="100"
-					value={ui.subtitle.position}
-					oninput={(e) => setNum('position', e)}
-				/>
-				<span class="val latin">{digits(ui.subtitle.position)}</span>
-			</label>
+		<div class="row stack">
+			<Slider
+				min={0}
+				max={100}
+				bind:value={ui.subtitle.position}
+				label={t('player.position')}
+				valueText={digits(ui.subtitle.position)}
+				onchange={() => ui.persist()}
+			/>
 		</div>
 		<div class="row">
 			<span class="lbl">{t('player.edge')}</span>
@@ -199,22 +190,19 @@
 				}}
 			/>
 		</div>
-		<div class="row">
-			<span class="lbl">{t('player.background')}</span>
-			<label class="slider">
-				<input
-					type="range"
-					min="0"
-					max="100"
-					value={ui.subtitle.background}
-					oninput={(e) => setNum('background', e)}
-				/>
-				<span class="val latin">{digits(ui.subtitle.background)}%</span>
-			</label>
+		<div class="row stack">
+			<Slider
+				min={0}
+				max={100}
+				bind:value={ui.subtitle.background}
+				label={t('player.background')}
+				valueText={`${digits(ui.subtitle.background)}%`}
+				onchange={() => ui.persist()}
+			/>
 		</div>
 	</section>
 
-	<section class="card">
+	<section class="card stagger-in" style="--i:3">
 		<h2 class="section-title">{t('settings.storage')}</h2>
 		<div class="row">
 			<span class="lbl">{t('settings.clearCache')}</span>
@@ -231,7 +219,7 @@
 		</div>
 	</section>
 
-	<section class="card">
+	<section class="card stagger-in" style="--i:4">
 		<h2 class="section-title">{t('settings.device')}</h2>
 		<div class="row">
 			<span class="lbl">{t('settings.deviceId')}</span>
@@ -302,22 +290,6 @@
 			opacity: 0;
 			transform: translateY(4px);
 		}
-	}
-	.slider {
-		display: flex;
-		align-items: center;
-		gap: var(--sp-3);
-		min-inline-size: 260px;
-	}
-	.slider input {
-		flex: 1;
-		accent-color: var(--accent);
-	}
-	.val {
-		min-inline-size: 3.2em;
-		text-align: end;
-		color: var(--text);
-		font-variant-numeric: tabular-nums;
 	}
 	.preview-wrap {
 		padding-block-end: var(--sp-1);

@@ -10,6 +10,7 @@
 	import TitleCard from '$lib/components/TitleCard.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { errorText } from '$lib/util/err';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 
@@ -40,10 +41,10 @@
 		loading = true;
 		error = '';
 		try {
-			const res = await api.search({ phrase: p, type: ty, ignoreTypes: [], page: 1 });
+			const res = await api.search({ phrase: p, type: ty, ignoreTypes: 0, page: 0 });
 			if (mine === seq) result = res;
 		} catch (e) {
-			if (mine === seq) error = e instanceof Error ? e.message : String(e);
+			if (mine === seq) error = errorText(e);
 		} finally {
 			if (mine === seq) loading = false;
 		}
@@ -102,8 +103,10 @@
 				<section>
 					<h2 class="section-title">{t('search.titles')}</h2>
 					<div class="grid">
-						{#each result.Titles as title (title.id)}
-							<TitleCard {title} />
+						{#each result.Titles as title, i (`${title.id}-${i}`)}
+							<div class="stagger-in" style="--i:{Math.min(i, 12)}">
+								<TitleCard {title} />
+							</div>
 						{/each}
 					</div>
 				</section>
@@ -113,9 +116,9 @@
 				<section>
 					<h2 class="section-title">{t('search.people')}</h2>
 					<div class="people">
-						{#each result.People as p (p.id)}
+						{#each result.People as p, i (`${p.id}-${i}`)}
 							{@const src = person(p.img)}
-							<div class="person">
+							<div class="person stagger-in" style="--i:{Math.min(i, 12)}">
 								<div class="avatar" style:background={placeholderGradient(p.id)}>
 									{#if src && !failed[p.id]}
 										<img
@@ -208,6 +211,13 @@
 		font-weight: 700;
 		font-size: 1.5rem;
 		margin-block-end: var(--sp-2);
+		transition:
+			transform var(--dur) var(--ease-spring),
+			border-color var(--dur) var(--ease);
+	}
+	.person:hover .avatar {
+		transform: scale(1.06);
+		border-color: var(--border-accent);
 	}
 	.avatar img {
 		inline-size: 100%;

@@ -15,6 +15,28 @@ use std::time::Duration;
 
 pub const HEALTH_PATH: &str = "/Ca8d5/Test/Hi";
 
+/// Strip the leading `/Ca8d5` (data/auth) or `/Ca8dA` (images) **local route-selector**
+/// segment before a request goes upstream (native-protocol §11, LIVE-VERIFIED 2026-10-29).
+///
+/// The selector is a LOCAL proxy hint only: Java/Retrofit and the UI↔core contract speak
+/// `/Ca8d5/...`/`/Ca8dA/...`, but `libexo.so` forwards the SAME path WITHOUT the selector,
+/// and the backend serves it there (`/Ca8d5/*` → 404 upstream, the stripped path → 200). We
+/// keep the selector everywhere inside the core (so the contract and the asset server are
+/// unchanged) and drop it only here, at the single point where a request hits the network.
+///
+/// Only a whole first segment that is exactly `Ca8d5` or `Ca8dA` is removed; any other path
+/// (e.g. the `trailer` `/{lsi}/trailer/{urn}`) is forwarded unchanged.
+pub fn strip_selector(path: &str) -> &str {
+    for sel in ["/Ca8d5", "/Ca8dA"] {
+        if let Some(rest) = path.strip_prefix(sel) {
+            if rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') {
+                return if rest.is_empty() { "/" } else { rest };
+            }
+        }
+    }
+    path
+}
+
 #[derive(Debug, Clone)]
 pub struct BackendRequest {
     pub method: Method,
@@ -99,7 +121,9 @@ impl Backend {
     /// Send on one specific route.
     pub async fn send_on(&self, route: &Route, req: &BackendRequest) -> Result<reqwest::Response> {
         let client = self.client_for(route);
-        let url = format!("https://{}{}", route.host, req.path);
+        // Scheme is always https here: every API/data/image route in the live tables carries
+        // `iSS=1`. The selector segment is dropped on the way upstream (native-protocol §11).
+        let url = format!("https://{}{}", route.host, strip_selector(&req.path));
         let mut rb = client.request(req.method.clone(), &url);
         if let Some(form) = &req.form {
             rb = rb.form(form);
@@ -211,18 +235,21 @@ impl Backend {
 }
 
 fn build_route_client(route: &Route) -> reqwest::Client {
-    // NATIVE-TLS-SEAM (native-protocol §3 — gated, DO NOT change without sign-off):
-    // reqwest derives SNI and the Host header from the request URL authority (`route.host`),
-    // and connects to `route.ip:route.port` via `.resolve()`. The native client instead
-    // appears to present a decoy / `ish` SNI (driven by the route `iSS`/`isp`/`ish` flags,
-    // see `route.front_host`) while keeping `Host = route.host`, with pin-only TLS. Swapping
-    // to that (set SNI independently of Host, disable CA/hostname checks, keep the pin) is
-    // the approved-only change; until then we keep SNI = Host = route host with CA checks on.
-    let tls = match &route.pin {
-        Some(pin) => crate::tls::pinned_config(pin.clone()),
-        None => crate::tls::default_config(),
-    };
-    reqwest::Client::builder()
+    // NATIVE-TLS-SEAM (native-protocol §10/§11 — RESOLVED, LIVE-VERIFIED 2026-10-29):
+    // the upstream path is a plain forwarding HTTPS client with **SNI = Host = the route's
+    // own hostname** (no decoy SNI). reqwest derives both SNI and the Host header from the
+    // request URL authority (`route.host`) and connects to `route.ip:route.port` via
+    // `.resolve()`, which reproduces that exactly.
+    //
+    // TLS is the app's own **certificate-pinning** scheme, keyed off this route's pin
+    // (`tls::route_config`): the cert CN is a camouflage hostname that will not chain to a
+    // public CA for the route host, so we do NOT use WebPKI/hostname validation; a pinned
+    // route is accepted iff the leaf SPKI SHA-256 equals the row's `Cpis` pin (a strictly
+    // stronger check than CA for these routes), and an unpinned bootstrap/`hell` row is
+    // accepted with any cert (the app's `initZero` passes no pins there). Handshake
+    // signatures are always verified by rustls.
+    let tls = crate::tls::route_config(route.pin.clone());
+    crate::net::maybe_bind_interface(reqwest::Client::builder())
         .use_preconfigured_tls(tls)
         .resolve(&route.host, SocketAddr::new(route.ip, route.port))
         .connect_timeout(Duration::from_secs(8))
@@ -230,4 +257,23 @@ fn build_route_client(route: &Route) -> reqwest::Client {
         .no_proxy()
         .build()
         .expect("route client")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_selector;
+
+    #[test]
+    fn selector_stripped_upstream() {
+        // native-protocol §11: the local selector segment is dropped before going upstream.
+        assert_eq!(strip_selector("/Ca8d5/data/home/0"), "/data/home/0");
+        assert_eq!(strip_selector("/Ca8d5/init/PreLoad"), "/init/PreLoad");
+        assert_eq!(strip_selector("/Ca8d5/Test/Hi"), "/Test/Hi");
+        assert_eq!(strip_selector("/Ca8d5/init/Peak/093017X"), "/init/Peak/093017X");
+        assert_eq!(strip_selector("/Ca8dA/images300x.jpg"), "/images300x.jpg");
+        assert_eq!(strip_selector("/Ca8d5/r/5?C=1"), "/r/5?C=1");
+        // Non-selector paths (and look-alikes without a segment boundary) are untouched.
+        assert_eq!(strip_selector("/1234/trailer/abc"), "/1234/trailer/abc");
+        assert_eq!(strip_selector("/Ca8d5img/x"), "/Ca8d5img/x");
+    }
 }

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { session } from '$lib/stores/session.svelte';
+	import { ads } from '$lib/stores/ads.svelte';
 	import { t } from '$lib/i18n';
 	import Icon from '$lib/components/Icon.svelte';
 	import Button from '$lib/components/Button.svelte';
@@ -9,27 +10,27 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import Accordion from '$lib/components/Accordion.svelte';
+	import VipCard from '$lib/components/gamify/VipCard.svelte';
+	import DailyStreak from '$lib/components/gamify/DailyStreak.svelte';
+	import RewardLoop from '$lib/components/gamify/RewardLoop.svelte';
 
-	type Profile = Awaited<ReturnType<typeof api.adProfile>>;
-	type Faq = Awaited<ReturnType<typeof api.faq>>['items'];
+	type FaqItems = Awaited<ReturnType<typeof api.faq>>['items'];
 
-	let profile = $state<Profile | null>(null);
-	let faq = $state<Faq>([]);
+	let faq = $state<FaqItems>([]);
 	let loading = $state(true);
 	let error = $state('');
-	let openIndex = $state<number | null>(null);
-	let loggingOut = $state(false);
+	let claiming = $state(false);
 
 	async function load() {
 		loading = true;
 		error = '';
 		try {
-			const [f, p] = await Promise.all([
+			const [f] = await Promise.all([
 				api.faq(),
-				session.isLoggedIn ? api.adProfile() : Promise.resolve(null)
+				session.isLoggedIn ? ads.init() : Promise.resolve()
 			]);
 			faq = f.items;
-			profile = p;
 		} catch (e) {
 			error = (e as { message?: string })?.message || t('common.retry');
 		} finally {
@@ -42,19 +43,27 @@
 	});
 
 	async function logout() {
-		loggingOut = true;
-		try {
-			await session.logout();
-			await goto('/auth');
-		} finally {
-			loggingOut = false;
-		}
+		await session.logout();
+		await goto('/auth');
+	}
+
+	function claimDaily() {
+		claiming = true;
+		// optimistic — the store awards coins + fires the celebration toast.
+		setTimeout(() => {
+			ads.claimDaily(100);
+			claiming = false;
+		}, 350);
 	}
 
 	const name = $derived(
 		session.isLoggedIn && !session.isGuest
 			? session.displayName || t('account.guest')
 			: t('account.guest')
+	);
+
+	let faqItems = $derived(
+		faq.map((item) => ({ id: String(item.id), q: item.title1, a: item.title2 }))
 	);
 </script>
 
@@ -78,77 +87,58 @@
 					<Badge tone="neutral">{t('account.notVip')}</Badge>
 				{/if}
 			</div>
+			{#if session.isLoggedIn}
+				<Button variant="ghost" icon="logout" onclick={logout}>{t('account.logout')}</Button>
+			{/if}
 		</section>
 
 		{#if error}
 			<ErrorState message={error} onretry={load} />
+		{:else if loading || !ads.data}
+			<div class="gamegrid">
+				<Skeleton height="220px" radius="var(--r-lg)" />
+				<Skeleton height="220px" radius="var(--r-lg)" />
+			</div>
 		{:else}
-			<section class="stats">
-				{#if loading}
-					{#each [0, 1, 2] as i (i)}
-						<Skeleton height="88px" radius="var(--r-lg)" />
-					{/each}
-				{:else if profile}
-					<div class="tile">
-						<Icon name="coin" size={22} />
-						<strong>{profile.Coins}</strong>
-						<span>{t('account.coins')}</span>
-					</div>
-					<div class="tile">
-						<Icon name="crown" size={22} />
-						<strong>{profile.VipLevel}</strong>
-						<span>{t('account.vipLevel')}</span>
-					</div>
-					<div class="tile">
-						<Icon name="star" size={22} />
-						<strong>{session.current?.plan ?? 0}</strong>
-						<span>{t('account.plan')}</span>
-					</div>
-				{/if}
+			<section class="gamegrid stagger-in" style="--i:0">
+				<VipCard vip={ads.vip} level={ads.vipLevel} coins={ads.coins} />
+				<DailyStreak days={ads.weekDays} today={ads.claimedToday} {claiming} onclaim={claimDaily} />
 			</section>
 
-			<h2 class="section-title faq-title">{t('account.faq')}</h2>
-			<div class="faq">
-				{#if loading}
-					{#each [0, 1, 2] as i (i)}
-						<Skeleton height="52px" />
-					{/each}
-				{:else}
-					{#each faq as item, i (item.id)}
-						<div class="row" class:open={openIndex === i}>
-							<button
-								class="q"
-								aria-expanded={openIndex === i}
-								onclick={() => (openIndex = openIndex === i ? null : i)}
-							>
-								<span>{item.title1}</span>
-								<Icon name="chevron-right" size={18} />
-							</button>
-							{#if openIndex === i}
-								<p class="a">{item.title2}</p>
-							{/if}
-						</div>
-					{/each}
-				{/if}
-			</div>
+			<section class="stagger-in" style="--i:1">
+				<RewardLoop
+					available={ads.nextAdAvailable}
+					needVpn={ads.nextAdNeedsVpn}
+					amount={50}
+					adsToday={ads.adsToday}
+					onclaim={(n) => ads.collectAdReward(n)}
+				/>
+			</section>
 		{/if}
 
-		{#if session.isLoggedIn}
-			<div class="logout">
-				<Button variant="danger" icon="arrow-left" loading={loggingOut} onclick={logout}>
-					{t('account.logout')}
-				</Button>
-			</div>
-		{/if}
+		<section class="faq stagger-in" style="--i:2">
+			<h2 class="section-title faq-title"><Icon name="info" size={20} />{t('account.faq')}</h2>
+			{#if loading}
+				<div class="faqsk">
+					{#each [0, 1, 2] as i (i)}<Skeleton height="52px" />{/each}
+				</div>
+			{:else if faqItems.length}
+				<Accordion items={faqItems} />
+			{/if}
+		</section>
 	{/if}
 </div>
 
 <style>
+	.page {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-5);
+	}
 	.profile {
 		display: flex;
 		align-items: center;
 		gap: var(--sp-4);
-		margin-block: var(--sp-5);
 		padding: var(--sp-5);
 		background: linear-gradient(135deg, var(--surface-2), var(--surface-1));
 		border: 1px solid var(--border);
@@ -158,8 +148,9 @@
 	.avatar {
 		display: grid;
 		place-items: center;
-		width: 68px;
-		height: 68px;
+		inline-size: 68px;
+		block-size: 68px;
+		flex: none;
 		border-radius: 50%;
 		background: var(--accent-soft);
 		color: var(--accent);
@@ -170,85 +161,29 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: var(--sp-2);
+		flex: 1;
+		min-inline-size: 0;
 	}
 	.who h2 {
 		font-size: 1.3rem;
 		font-weight: 700;
 	}
-	.stats {
+	.gamegrid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 		gap: var(--sp-4);
 	}
-	.tile {
-		display: flex;
-		flex-direction: column;
-		gap: var(--sp-1);
-		padding: var(--sp-4);
-		background: var(--surface-1);
-		border: 1px solid var(--border);
-		border-radius: var(--r-lg);
-		color: var(--accent);
-		transition:
-			transform var(--dur) var(--ease),
-			border-color var(--dur) var(--ease);
-	}
-	.tile:hover {
-		transform: translateY(-2px);
-		border-color: var(--accent);
-	}
-	.tile strong {
-		font-size: 1.6rem;
-		color: var(--text);
-	}
-	.tile span {
-		font-size: 0.8rem;
-		color: var(--text-muted);
-	}
 	.faq-title {
-		margin-block: var(--sp-6) var(--sp-3);
+		margin-block-end: var(--sp-3);
 	}
-	.faq {
+	.faqsk {
 		display: flex;
 		flex-direction: column;
 		gap: var(--sp-2);
 	}
-	.row {
-		background: var(--surface-1);
-		border: 1px solid var(--border);
-		border-radius: var(--r-md);
-		overflow: hidden;
-		transition: border-color var(--dur) var(--ease);
-	}
-	.row.open {
-		border-color: var(--accent);
-	}
-	.q {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--sp-3);
-		width: 100%;
-		padding: var(--sp-4);
-		text-align: start;
-		color: var(--text);
-		font-weight: 600;
-	}
-	.q :global(svg) {
-		flex-shrink: 0;
-		color: var(--text-dim);
-		transition: transform var(--dur) var(--ease);
-	}
-	.row.open .q :global(svg) {
-		transform: rotate(90deg);
-	}
-	.a {
-		padding-inline: var(--sp-4);
-		padding-block: 0 var(--sp-4);
-		color: var(--text-muted);
-		line-height: 1.7;
-	}
-	.logout {
-		margin-block-start: var(--sp-6);
+	@media (max-width: 640px) {
+		.profile {
+			flex-wrap: wrap;
+		}
 	}
 </style>

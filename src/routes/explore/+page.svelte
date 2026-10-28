@@ -9,6 +9,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import Spinner from '$lib/components/Spinner.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
@@ -133,19 +134,7 @@
 					<span class="num latin">{digits(total)}</span>
 					<span class="lbl">{t('explore.results')}</span>
 				</div>
-				<div class="seg">
-					{#each viewOptions as opt (opt.value)}
-						<button
-							type="button"
-							class:active={view === opt.value}
-							aria-label={opt.label}
-							title={opt.label}
-							onclick={() => (view = opt.value)}
-						>
-							<Icon name={opt.icon} size={17} />
-						</button>
-					{/each}
-				</div>
+				<SegmentedControl options={viewOptions} bind:value={view} size="sm" />
 			</header>
 
 			{#if hasRelaxation}
@@ -190,8 +179,10 @@
 					</div>
 				{:else}
 					<div class="list">
-						{#each items as item (item.id)}
-							<ResultRow title={item} />
+						{#each items as item, i (`${item.id}-${i}`)}
+							<div class="stagger-in" style="--i:{Math.min(i, 12)}">
+								<ResultRow title={item} />
+							</div>
 						{/each}
 					</div>
 				{/if}
@@ -273,34 +264,6 @@
 	.count .lbl {
 		font-size: 0.9rem;
 		color: var(--text-muted);
-	}
-
-	.seg {
-		display: inline-flex;
-		background: var(--surface-2);
-		border: 1px solid var(--border);
-		border-radius: var(--r-md);
-		padding: 3px;
-		gap: 2px;
-	}
-	.seg button {
-		display: inline-grid;
-		place-items: center;
-		inline-size: 34px;
-		block-size: 30px;
-		border: none;
-		background: transparent;
-		color: var(--text-muted);
-		border-radius: var(--r-sm);
-		transition: all var(--dur-fast) var(--ease);
-	}
-	.seg button:hover {
-		color: var(--text);
-	}
-	.seg button.active {
-		background: var(--surface-hover);
-		color: var(--text);
-		box-shadow: var(--shadow-sm);
 	}
 
 	.relax {

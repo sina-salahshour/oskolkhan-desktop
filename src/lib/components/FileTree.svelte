@@ -7,6 +7,7 @@
 	import Self from './FileTree.svelte';
 	import Icon from './Icon.svelte';
 	import Badge from './Badge.svelte';
+	import IconButton from './IconButton.svelte';
 
 	interface Props {
 		node: GroupInfoV2;
@@ -28,7 +29,7 @@
 <div class="node" class:root={level === 0} style="--lvl:{level}">
 	{#if heading}
 		<button class="row head" onclick={() => (open = !open)} aria-expanded={open}>
-			<Icon name={open ? 'chevron-down' : 'chevron-left'} size={18} />
+			<span class="chev" class:open><Icon name="chevron-left" size={18} /></span>
 			<span class="titles">
 				<b>{heading}</b>
 				{#if subheading}<small class="latin">{subheading}</small>{/if}
@@ -51,7 +52,7 @@
 			{/if}
 			{#if hasFiles}
 				<ul class="files">
-					{#each node.Files as file, i (file.id)}
+					{#each node.Files as file, i (`${file.id}-${i}`)}
 						<li class="file">
 							<span class="finfo">
 								<span class="fname">{file.Title[0] ?? file.description ?? t('common.episode')}</span
@@ -66,23 +67,21 @@
 								{#if file.SoftSub}<Badge tone="neutral">Sub</Badge>{/if}
 							</span>
 							<span class="actions">
-								<button
-									class="act play"
-									title={t('common.play')}
-									aria-label={t('common.play')}
+								<IconButton
+									icon="play-filled"
+									size="sm"
+									variant="surface"
+									label={t('common.play')}
 									onclick={() => onplay(file, node.Files, i)}
-								>
-									<Icon name="play-filled" size={15} />
-								</button>
+								/>
 								{#if file.Download}
-									<button
-										class="act"
-										title={t('common.download')}
-										aria-label={t('common.download')}
+									<IconButton
+										icon="download"
+										size="sm"
+										variant="ghost"
+										label={t('common.download')}
 										onclick={() => ondownload(file)}
-									>
-										<Icon name="download" size={16} />
-									</button>
+									/>
 								{/if}
 							</span>
 						</li>
@@ -198,24 +197,24 @@
 		display: flex;
 		gap: var(--sp-2);
 	}
-	.act {
-		inline-size: 32px;
-		block-size: 32px;
-		display: grid;
-		place-items: center;
-		border-radius: var(--r-sm);
-		background: var(--surface-3);
-		border: 1px solid var(--border);
-		color: var(--text-muted);
-		transition: all var(--dur-fast) var(--ease);
+	.head:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
-	.act:hover {
-		color: var(--text);
-		border-color: var(--border-strong);
+	.chev {
+		display: inline-grid;
+		transition: transform var(--dur) var(--ease-out);
 	}
-	.act.play:hover {
-		background: var(--accent);
-		color: var(--on-accent);
-		border-color: var(--accent);
+	.chev.open {
+		transform: rotate(-90deg);
+	}
+	.children {
+		animation: slide-in var(--dur) var(--ease-out) both;
+	}
+	@keyframes slide-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
 	}
 </style>

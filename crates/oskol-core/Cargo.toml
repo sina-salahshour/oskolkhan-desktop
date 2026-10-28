@@ -39,3 +39,4 @@ prost-reflect-build = "0.16"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+rcgen = "0.13"

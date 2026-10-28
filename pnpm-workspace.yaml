@@ -1,2 +1,3 @@
 minimumReleaseAgeExclude:
   - '@types/node@26.6.6'
+  - '@lucide/svelte@1.63.0'

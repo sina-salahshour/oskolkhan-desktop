@@ -28,7 +28,11 @@ async fn main() {
         match core.api(op, serde_json::json!({"page": 0})).await {
             Ok(v) => {
                 let s = v.to_string();
-                println!("{op}: ok {} bytes: {}", s.len(), &s[..s.len().min(400)]);
+                let mut end = s.len().min(400);
+                while !s.is_char_boundary(end) {
+                    end -= 1;
+                }
+                println!("{op}: ok {} bytes: {}", s.len(), &s[..end]);
             }
             Err(e) => println!("{op}: error {}", serde_json::to_string(&e).unwrap()),
         }

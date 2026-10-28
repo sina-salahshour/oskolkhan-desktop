@@ -4,6 +4,7 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { session } from '$lib/stores/session.svelte';
 	import Icon, { type IconName } from './Icon.svelte';
+	import Tooltip from './Tooltip.svelte';
 
 	interface NavItem {
 		href: string;
@@ -41,15 +42,24 @@
 	</div>
 
 	<nav>
+		{#snippet link(item: NavItem)}
+			<a href={item.href} class:active={isActive(item.href)} aria-label={t(item.key)}>
+				<span class="dot"></span>
+				<Icon name={item.icon} size={20} />
+				{#if !ui.sidebarCollapsed}<span class="txt">{t(item.key)}</span>{/if}
+			</a>
+		{/snippet}
+
 		{#snippet group(items: NavItem[], heading?: string)}
 			{#if heading && !ui.sidebarCollapsed}<p class="heading">{heading}</p>{/if}
 			<ul>
 				{#each items as item (item.href)}
 					<li>
-						<a href={item.href} class:active={isActive(item.href)} title={t(item.key)}>
-							<Icon name={item.icon} size={20} />
-							{#if !ui.sidebarCollapsed}<span>{t(item.key)}</span>{/if}
-						</a>
+						{#if ui.sidebarCollapsed}
+							<Tooltip content={t(item.key)} placement="right">{@render link(item)}</Tooltip>
+						{:else}
+							{@render link(item)}
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -67,6 +77,7 @@
 				<b>{session.isLoggedIn ? session.displayName : t('auth.login')}</b>
 				<small>{session.current?.vip ? t('account.vipActive') : t('account.notVip')}</small>
 			</span>
+			{#if session.current?.vip}<span class="vip"><Icon name="crown" size={14} /></span>{/if}
 		{/if}
 	</a>
 </aside>
@@ -104,6 +115,10 @@
 		background: linear-gradient(135deg, var(--accent-strong), var(--accent-dim));
 		color: var(--on-accent);
 		box-shadow: 0 4px 16px var(--accent-glow);
+		transition: transform var(--dur) var(--ease-spring);
+	}
+	.brand:hover .logo {
+		transform: rotate(-6deg) scale(1.05);
 	}
 	.word {
 		display: flex;
@@ -150,7 +165,10 @@
 		color: var(--text-muted);
 		font-weight: 600;
 		font-size: 0.92rem;
-		transition: all var(--dur-fast) var(--ease);
+		transition:
+			background var(--dur-fast) var(--ease),
+			color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 		position: relative;
 	}
 	.collapsed nav a {
@@ -160,18 +178,30 @@
 		background: var(--surface-1);
 		color: var(--text);
 	}
+	nav a:active {
+		transform: scale(0.97);
+	}
 	nav a.active {
 		background: var(--accent-soft);
 		color: var(--accent-strong);
 	}
-	nav a.active::before {
-		content: '';
+	.dot {
 		position: absolute;
 		inset-inline-start: 0;
-		inset-block: 9px;
+		inset-block: 50%;
 		inline-size: 3px;
+		block-size: 0;
 		border-radius: var(--r-full);
 		background: var(--accent);
+		transform: translateY(-50%);
+		transition:
+			block-size var(--dur) var(--ease-spring),
+			opacity var(--dur) var(--ease);
+		opacity: 0;
+	}
+	nav a.active .dot {
+		block-size: 22px;
+		opacity: 1;
 	}
 	.account {
 		display: flex;
@@ -181,9 +211,13 @@
 		border-radius: var(--r-md);
 		border: 1px solid var(--border);
 		background: var(--surface-1);
+		transition:
+			border-color var(--dur) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 	.account:hover {
 		border-color: var(--border-strong);
+		transform: translateY(-1px);
 	}
 	.avatar {
 		inline-size: 36px;
@@ -200,6 +234,7 @@
 		flex-direction: column;
 		line-height: 1.25;
 		min-inline-size: 0;
+		flex: 1;
 	}
 	.who b {
 		font-size: 0.88rem;
@@ -210,5 +245,15 @@
 	.who small {
 		font-size: 0.72rem;
 		color: var(--text-dim);
+	}
+	.vip {
+		display: grid;
+		place-items: center;
+		inline-size: 24px;
+		block-size: 24px;
+		flex: none;
+		border-radius: var(--r-full);
+		background: var(--accent-soft);
+		color: var(--accent-strong);
 	}
 </style>

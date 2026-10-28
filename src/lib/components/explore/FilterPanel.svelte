@@ -190,12 +190,14 @@
 			</div>
 			{#if genreOptions.length}
 				<div class="chips">
-					{#each genreOptions as g (g.id)}
-						<Chip
-							selected={genres.includes(g.id)}
-							removable
-							onclick={() => toggleGenre(g.id)}
-							onremove={() => toggleGenre(g.id)}>{g.name}</Chip
+					{#each genreOptions as g, i (`${g.id}-${i}`)}
+						<span class="stagger-in" style="--i:{Math.min(i, 12)}"
+							><Chip
+								selected={genres.includes(g.id)}
+								removable
+								onclick={() => toggleGenre(g.id)}
+								onremove={() => toggleGenre(g.id)}>{g.name}</Chip
+							></span
 						>
 					{/each}
 				</div>
@@ -216,12 +218,14 @@
 			</div>
 			{#if countryOptions.length}
 				<div class="chips">
-					{#each countryOptions as c (c.id)}
-						<Chip
-							selected={countries.includes(c.id)}
-							removable
-							onclick={() => toggleCountry(c.id)}
-							onremove={() => toggleCountry(c.id)}>{c.name}</Chip
+					{#each countryOptions as c, i (`${c.id}-${i}`)}
+						<span class="stagger-in" style="--i:{Math.min(i, 12)}"
+							><Chip
+								selected={countries.includes(c.id)}
+								removable
+								onclick={() => toggleCountry(c.id)}
+								onremove={() => toggleCountry(c.id)}>{c.name}</Chip
+							></span
 						>
 					{/each}
 				</div>

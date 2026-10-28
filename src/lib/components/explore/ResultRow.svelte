@@ -50,7 +50,7 @@
 			<p class="desc">{title.Description}</p>
 		{/if}
 	</div>
-	<span class="chev"><Icon name="chevron-left" size={18} /></span>
+	<span class="chev" aria-hidden="true"><Icon name="chevron-left" size={18} /></span>
 </a>
 
 <style>
@@ -71,6 +71,11 @@
 		border-color: var(--border-strong);
 		background: var(--surface-2);
 		transform: translateY(-2px);
+	}
+	.row:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+		border-color: var(--border-accent);
 	}
 	.thumb {
 		inline-size: 64px;
@@ -140,5 +145,18 @@
 		place-items: center;
 		color: var(--text-dim);
 		flex: none;
+		transition:
+			transform var(--dur) var(--ease-out),
+			color var(--dur) var(--ease);
+	}
+	/* chevron-left points toward the inline-end in RTL; nudge along that direction */
+	.row:hover .chev,
+	.row:focus-visible .chev {
+		color: var(--accent);
+		transform: translateX(-4px);
+	}
+	:global([dir='ltr']) .row:hover .chev,
+	:global([dir='ltr']) .row:focus-visible .chev {
+		transform: translateX(4px);
 	}
 </style>

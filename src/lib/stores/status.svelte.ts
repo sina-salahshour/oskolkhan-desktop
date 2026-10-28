@@ -43,17 +43,28 @@ class StatusStore {
 	init() {
 		if (!browser || this.#subscribed) return;
 		this.#subscribed = true;
-		api.onStatus((s) => {
-			this.current = s;
-		});
-		api
-			.coreStatus()
-			.then((s) => {
+		// Live push updates (optional): on some webviews the event channel isn't
+		// ready at startup; guard it so a failure here never breaks boot.
+		try {
+			api.onStatus((s) => {
 				this.current = s;
-			})
-			.catch(() => {
-				/* onStatus will deliver updates */
 			});
+		} catch {
+			/* events unavailable; polling below keeps status fresh */
+		}
+		// Poll core_status until the core is ready/errored. This is resilient to
+		// early-startup timing and to the push channel being unavailable.
+		const poll = async () => {
+			try {
+				this.current = await api.coreStatus();
+			} catch {
+				/* core not up yet */
+			}
+			if (this.current.phase !== 'ready' && this.current.phase !== 'error') {
+				setTimeout(poll, 500);
+			}
+		};
+		void poll();
 	}
 
 	async retry() {

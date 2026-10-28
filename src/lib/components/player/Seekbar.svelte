@@ -84,6 +84,14 @@
 	.rail:hover {
 		block-size: 8px;
 	}
+	.rail:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 4px;
+		block-size: 8px;
+	}
+	.rail:focus-visible .knob {
+		opacity: 1;
+	}
 	.buffered,
 	.played {
 		position: absolute;
