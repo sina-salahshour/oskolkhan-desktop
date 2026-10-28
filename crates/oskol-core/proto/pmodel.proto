@@ -1,0 +1,431 @@
+syntax = "proto3";
+package PModel;
+
+message adProfile {
+  int32 TodayAds = 1;
+  bool Today = 2;
+  bool DayMinus1 = 3;
+  bool DayMinus2 = 4;
+  bool DayMinus3 = 5;
+  int32 Coins = 6;
+  int32 adAssignments = 7;
+  int32 IReq = 8;
+  int32 IRes = 9;
+  bool NextADSneedVPN = 10;
+  bool NextADSavailable = 11;
+  int32 AdsLast7Days = 12;
+  int32 AdsLast14Days = 13;
+  int32 AdsLast21Days = 14;
+  bool DayMinus4 = 15;
+  bool DayMinus5 = 16;
+  bool DayMinus6 = 17;
+  bool DayMinus7 = 18;
+  bool Vip = 19;
+  int32 VipLevel = 20;
+}
+
+message AdvanceFiler {
+  PairData PublishYear = 1;
+  repeated int32 Genres = 2;
+  RatingCluster Imdb = 3;
+  RatingCluster Meta = 4;
+  RatingCluster Rotten = 5;
+  RatingCluster MDL = 6;
+  RatingCluster Mal = 7;
+  RatingCluster Dizi = 8;
+  repeated int32 Countries = 9;
+  PairData Violence = 10;
+  PairData Profanity = 11;
+  PairData Drugs = 12;
+  PairData Frightening = 13;
+  int32 Sort = 14;
+  int32 type = 15;
+  int32 contentType = 16;
+  int32 checksum = 17;
+  int32 genreMatch = 18;
+  int32 ratingMatch = 19;
+}
+
+message CheckSum {
+  repeated CheckSumDataType items = 1;
+}
+
+message CheckSumDataType {
+  int32 id = 1;
+  int64 Last = 2;
+  int64 sum = 3;
+}
+
+message Ctype {
+  repeated ids items = 1;
+}
+
+message DynamicMessage {
+  bool Status = 1;
+  string Message = 2;
+  repeated string Messages = 3;
+  repeated int32 values = 4;
+}
+
+message Faq {
+  repeated ids items = 1;
+}
+
+message File {
+  int64 id = 1;
+  string urn = 2;
+  string description = 3;
+  bool adaptive = 4;
+  bool SoftSub = 6;
+  bool Download = 7;
+  string S = 8;
+  string E = 9;
+  int32 Color = 10;
+  repeated string Title = 11;
+  int32 Size = 12;
+  repeated string ExtraInfo = 13;
+  bool Social = 14;
+  string vurn = 15;
+  bool LS = 16;
+  bool isDub = 17;
+  string LSI = 18;
+  bool DSTF = 19;
+}
+
+message FileV2 {
+  int64 id = 1;
+  string urn = 2;
+  string description = 3;
+  bool adaptive = 4;
+  bool SoftSub = 6;
+  bool Download = 7;
+  string S = 8;
+  string E = 9;
+  int32 Color = 10;
+  repeated string Title = 11;
+  int32 Size = 12;
+  repeated string ExtraInfo = 13;
+  bool Social = 14;
+  string vurn = 15;
+  bool LS = 16;
+  bool isDub = 17;
+  string LSI = 18;
+  bool DSTF = 19;
+}
+
+message GenericTitle {
+  int64 id = 1;
+  string persian = 2;
+  repeated string titles = 3;
+  int32 Year = 4;
+  int32 contenttype = 5;
+  repeated int32 genres = 6;
+  repeated int32 country = 7;
+  float rank = 8;
+  int32 votes = 9;
+  string img = 10;
+  int32 contentrating = 11;
+  bool MustSee = 12;
+  float MetaScore = 13;
+  float UserScore = 14;
+  int32 TomatoMeter = 15;
+  int32 Audience = 16;
+  string Description = 17;
+  string LatestChange = 18;
+  int32 Language = 19;
+  repeated Keyval Tags = 20;
+  string BgColor = 21;
+  bool isDub = 22;
+  string S = 23;
+  string E = 24;
+  string Q = 25;
+  repeated string orgtitles = 26;
+}
+
+message GetMore {
+  repeated GenericTitle items = 1;
+  bool hasmove = 2;
+  int32 total = 3;
+  repeated Relaxation relaxations = 4;
+  repeated string relaxed = 5;
+}
+
+message GroupInfo {
+  repeated string Title = 1;
+  repeated GroupInfo Child = 2;
+  repeated File Files = 3;
+  int32 Color = 4;
+  bool Downloadable = 5;
+  bool x265 = 6;
+  string Description = 7;
+  int32 FilesCount = 8;
+  repeated string ExtraInfo = 9;
+}
+
+message GroupInfoV2 {
+  repeated string Title = 1;
+  repeated GroupInfoV2 Child = 2;
+  repeated FileV2 Files = 3;
+  int32 Color = 4;
+  bool Downloadable = 5;
+  bool x265 = 6;
+  string Description = 7;
+  int32 FilesCount = 8;
+  repeated string ExtraInfo = 9;
+  int64 id = 10;
+  bool SoftSub = 11;
+  bool isDub = 12;
+  bool isOriginal = 13;
+  bool isCensored = 14;
+  bool isHDR = 15;
+  bool isDts = 16;
+  bool isDolbyVision = 17;
+  int32 SceenSize = 18;
+  int32 avgSize = 19;
+  string S = 20;
+  string LatestE = 21;
+  bytes ColorIndicator = 22;
+}
+
+message hell {
+  string h = 1;
+  bool v = 2;
+  bytes e = 3;
+  bool iss = 4;
+  bool isp = 5;
+  string ish = 6;
+  int32 z = 7;
+  int32 p = 8;
+}
+
+message hellix {
+  repeated hellx items = 1;
+}
+
+message hellx {
+  bytes hell = 1;
+  repeated int32 x = 2;
+}
+
+message Home {
+  repeated HomeEntity sections = 1;
+  bool hasmove = 2;
+}
+
+message HomeEntity {
+  int32 id = 1;
+  string title = 2;
+  int32 type = 3;
+  bool hasmore = 4;
+  string moreendpoint = 5;
+  repeated GenericTitle recently = 6;
+}
+
+message ids {
+  int32 id = 1;
+  string title1 = 2;
+  string title2 = 3;
+}
+
+message interfaces {
+  int32 id = 1;
+  repeated interfacex items = 2;
+}
+
+message interfacess {
+  int32 key = 1;
+  repeated interfaces items = 2;
+  repeated bytes HsN = 3;
+  repeated interfacex Stack = 4;
+  repeated bytes Cpis = 5;
+  int64 hash = 10;
+  int64 TimeStamp = 11;
+  int32 interupt = 12;
+}
+
+message interfacex {
+  int32 id = 1;
+  bytes Endpoint = 2;
+  bool v4 = 3;
+  int32 HostName = 4;
+  bytes cp = 5;
+  bytes r = 6;
+  bytes p = 7;
+  bytes m = 8;
+  bytes u = 9;
+  int32 cpi = 10;
+  int32 stk = 11;
+  bool fr = 12;
+  bool isC = 13;
+  int32 H = 14;
+  bytes dp = 15;
+  bool iSS = 16;
+  bool isp = 17;
+}
+
+message IntStringPair {
+  int32 first = 1;
+  string second = 2;
+}
+
+message ISearch {
+  repeated GenericTitle Titles = 1;
+  repeated ids Keywords = 2;
+  repeated tti People = 3;
+}
+
+message ItemCounter {
+  int32 Country = 1;
+  int32 Count = 2;
+}
+
+message ItemDetail {
+  int32 country = 1;
+  repeated int32 language = 2;
+  repeated int32 genre = 3;
+  repeated ids category = 4;
+  int32 runtime = 5;
+  repeated tti network = 6;
+  int32 airday = 7;
+  repeated tti creator = 8;
+  repeated tti director = 9;
+  repeated tti people = 10;
+  repeated tti recommended = 11;
+  string comment = 12;
+  repeated Rating rating = 13;
+  repeated tti ListingRank = 14;
+  bool MustSee = 15;
+  int32 status = 16;
+  bool hasbg = 17;
+  string trailer = 18;
+  int32 tServer = 19;
+  string tUrl = 20;
+  repeated string message = 21;
+  int64 Budget = 22;
+  int64 Revenue = 23;
+}
+
+message Keyval {
+  int32 Key = 1;
+  string Value = 2;
+}
+
+message LongArray {
+  repeated int64 group_ids = 1;
+}
+
+message OAuth {
+  bool status = 1;
+  bool birth = 2;
+  int32 contentType = 3;
+  int32 id = 4;
+  int32 plan = 5;
+  string carry = 6;
+  string Name = 7;
+  string Family = 8;
+  bool IsGetter = 9;
+  bool IsWacher = 10;
+  int32 Age = 11;
+  bool Vip = 12;
+  int32 VipLevel = 13;
+}
+
+message PairData {
+  int32 From = 1;
+  int32 To = 2;
+}
+
+message PlayerCarry {
+  map<int64, int32> FilesIndex = 1;
+  repeated IntStringPair Files = 2;
+  int32 PlayebleIndex = 3;
+  repeated FileV2 PlayebleItems = 4;
+  GenericTitle Title = 5;
+}
+
+message PreLoad {
+  int32 revision = 1;
+  repeated string genre = 2;
+  repeated string seriesstatus = 3;
+  repeated string contentratingtext = 4;
+  repeated string contentrating = 5;
+  repeated string countries = 6;
+  repeated string languages = 7;
+  repeated string listingcolors = 8;
+  repeated int64 ColorPalette = 9;
+  int32 AndroidCellVersionCode = 10;
+  int32 AndroidCellMinVersionCode = 11;
+  repeated ids AndroidCellUpdate = 12;
+  repeated string AndroidCellChangeLog = 13;
+  string Envs = 14;
+  string BotUrl = 15;
+  bool IsPrivate = 16;
+  bytes Salt = 17;
+  repeated ItemCounter inUsecountries = 18;
+  repeated tti Lists = 19;
+  repeated tti SearchTypeFilter = 20;
+  bool Banner = 22;
+  int32 LatestNonForceUpdateAndroidCellVersionCode = 23;
+  int32 AdsInterval = 24;
+  bool HideTvEmailAuth = 25;
+  bool HideTvGoogleAuth = 26;
+  string ns = 27;
+  bool EnableProxyForIR = 28;
+  bool EnableProxyForNonIR = 29;
+  bool BannerForIR = 30;
+  bool EnableGuestLogin = 31;
+  bool GuestNotice = 34;
+}
+
+message Rating {
+  int32 type = 1;
+  string r1 = 2;
+  string r2 = 3;
+  string uri = 5;
+}
+
+message RatingCluster {
+  PairData PartOn = 1;
+  PairData PartTwo = 2;
+}
+
+message Relaxation {
+  string facet = 1;
+  int32 wouldBe = 2;
+}
+
+message SyncStuff {
+  repeated WatchDataType Watches = 1;
+  repeated WatchDataType Likes = 2;
+}
+
+message TitleFiles {
+  GroupInfo Items = 1;
+  bool Downloadable = 2;
+  bool MultiGroup = 3;
+  bool Banner = 4;
+}
+
+message TitleFilesV2 {
+  GroupInfoV2 Items = 1;
+  bool Downloadable = 2;
+  bool GroupInfo = 3;
+  bool Banner = 4;
+  map<int64, LongArray> InfoMap = 5;
+}
+
+message tti {
+  int32 id = 1;
+  string title1 = 2;
+  string title2 = 3;
+  string img = 4;
+  string title3 = 5;
+}
+
+message WatchDataType {
+  int64 id = 1;
+  int64 fid = 2;
+  int32 length = 3;
+  int32 last = 4;
+  int64 on = 5;
+}

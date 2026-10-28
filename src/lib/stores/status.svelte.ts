@@ -1,0 +1,72 @@
+/**
+ * Core status store. Mirrors the core's CoreStatus and keeps itself in sync via
+ * the `core://status` event (through api.onStatus).
+ */
+import { browser } from '$app/env';
+import { api } from '$lib/api';
+import type { CoreStatus } from '$lib/api';
+
+const INITIAL: CoreStatus = {
+	phase: 'starting',
+	message: null,
+	activeHost: null,
+	routes: 0,
+	assetBase: '',
+	loggedIn: false
+};
+
+class StatusStore {
+	current = $state<CoreStatus>(INITIAL);
+	#subscribed = false;
+
+	get phase() {
+		return this.current.phase;
+	}
+
+	get ready() {
+		return this.current.phase === 'ready';
+	}
+
+	get booting() {
+		return this.current.phase === 'starting' || this.current.phase === 'bootstrapping';
+	}
+
+	get failed() {
+		return this.current.phase === 'offline' || this.current.phase === 'error';
+	}
+
+	get assetBase() {
+		return this.current.assetBase;
+	}
+
+	/** Start listening. Safe to call repeatedly; only the first call subscribes. */
+	init() {
+		if (!browser || this.#subscribed) return;
+		this.#subscribed = true;
+		api.onStatus((s) => {
+			this.current = s;
+		});
+		api
+			.coreStatus()
+			.then((s) => {
+				this.current = s;
+			})
+			.catch(() => {
+				/* onStatus will deliver updates */
+			});
+	}
+
+	async retry() {
+		try {
+			this.current = await api.retryBoot();
+		} catch {
+			this.current = { ...this.current, phase: 'error', message: 'retry failed' };
+		}
+	}
+
+	async importKickstart(path: string) {
+		this.current = await api.importKickstart(path);
+	}
+}
+
+export const status = new StatusStore();

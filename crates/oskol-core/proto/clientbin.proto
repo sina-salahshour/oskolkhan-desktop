@@ -1,0 +1,16 @@
+syntax = "proto3";
+package ClientBinModel;
+
+message SubtitleITems {
+  int32 Owner = 1;
+  bool Deaf = 2;
+  string Link = 3;
+  double Fps = 5;
+  int32 Language = 6;
+  repeated string Keys = 7;
+}
+
+message SubTitleParent {
+  bool Status = 1;
+  repeated SubtitleITems Items = 2;
+}

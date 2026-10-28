@@ -1,0 +1,10 @@
+.svelte-kit
+build
+node_modules
+pnpm-lock.yaml
+package-lock.json
+src-tauri
+crates
+docs
+target
+Cargo.lock
