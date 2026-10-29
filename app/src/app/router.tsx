@@ -7,7 +7,7 @@
  *     homeRoute.update({ component: HomeScreen })   // or edit the route below.
  * Keep the paths/ids below stable — they are the navigation contract.
  */
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { createHashHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { AppShell } from './AppShell';
 import { ErrorState } from '../components/ui';
 import HomeScreen from '../features/home';
@@ -86,8 +86,14 @@ const routeTree = rootRoute.addChildren([
 	authRoute
 ]);
 
+// Hash history: the packaged app is served from file:// (loadFile), where the
+// initial pathname is the on-disk index.html path and matches no route — the app
+// would open on an error page until the user navigated. Hash routing keeps the
+// path in the URL fragment, so the initial location is always "/" in both the
+// packaged (file://) and dev (http://localhost) builds.
 export const router = createRouter({
 	routeTree,
+	history: createHashHistory(),
 	defaultPreload: 'intent',
 	defaultPreloadStaleTime: 0
 });
