@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button, ErrorState, RatingChip, Skeleton, SkeletonText } from '../../components/ui';
-import { useFiles, useItem, useItemDetail, useLike, usePreload } from '../../lib/query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useFiles, useItem, useItemDetail, useLike, useLikedIds, usePreload, LIKED_IDS_KEY } from '../../lib/query';
 import { useSessionStore } from '../../lib/stores/session';
 import { usePlayerStore } from '../../lib/stores/player';
 import { useDownloadsStore } from '../../lib/stores/downloads';
@@ -48,7 +49,9 @@ export default function TitleScreen() {
 	const like = useLike();
 	const copyLink = useCopyLink();
 	const push = useToastStore((s) => s.push);
-	const [liked, setLiked] = useState(false);
+	const qc = useQueryClient();
+	const likedIds = useLikedIds();
+	const liked = likedIds.data?.has(tid) ?? false;
 	const [expanded, setExpanded] = useState(false);
 
 	const title = item.data;
@@ -107,12 +110,15 @@ export default function TitleScreen() {
 		}
 	};
 
-	const download = (file: FileV2) => {
+	const download = (file: FileV2, opts?: { destDir?: string; groupName?: string }) => {
 		useDownloadsStore.getState().add({
 			titleId: tid,
 			title: title.persian,
 			urn: file.urn,
-			group: file.Title[0],
+			fileId: file.id,
+			// The download GROUP (destination) when one was chosen, else the file's label.
+			group: opts?.groupName ?? file.Title[0],
+			destDir: opts?.destDir,
 			sizeBytes: file.Size * 1024 * 1024
 		});
 	};
@@ -124,16 +130,25 @@ export default function TitleScreen() {
 		);
 	};
 
+	const setLikedId = (id: number, on: boolean) => {
+		qc.setQueryData<Set<number>>(LIKED_IDS_KEY, (old) => {
+			const s = new Set(old ?? []);
+			if (on) s.add(id);
+			else s.delete(id);
+			return s;
+		});
+	};
+
 	const toggleLike = () => {
 		const next = !liked;
-		setLiked(next);
+		setLikedId(tid, next); // optimistic
 		like.mutate(
 			{ category: title.contenttype, item: tid, on: next, status: 1 },
 			{
 				onSuccess: () => {
 					if (next) push({ tone: 'success', title: t('common.liked') });
 				},
-				onError: () => setLiked(!next)
+				onError: () => setLikedId(tid, !next) // revert
 			}
 		);
 	};
@@ -160,11 +175,7 @@ export default function TitleScreen() {
 				pre={pre.data}
 				assetBase={assetBase}
 				liked={liked}
-				onPlay={playDefault}
-				onDownload={playDefault}
 				onToggleLike={toggleLike}
-				onShare={() => void window.oskol?.clipboardWrite(`oskolkhan://title/${tid}`)}
-				onOpenExternal={playDefault}
 			/>
 			<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
 				<div className="flex min-w-0 flex-col gap-8">
@@ -180,7 +191,7 @@ export default function TitleScreen() {
 											key={`${r.type}-${i}`}
 											type="button"
 											onClick={() => void window.oskol?.openExternal(r.uri)}
-											className="rounded-full transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+											className="cursor-pointer rounded-full transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
 										>
 											{chip}
 										</button>

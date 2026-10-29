@@ -44,10 +44,16 @@ function GridSkeleton() {
 export default function ExploreScreen() {
 	const { t, lang } = useI18n();
 	const search = useSearch({ strict: false }) as { more?: string };
-	const endpoint = search.more || 'filter';
-
 	const ready = useCoreStatus().data?.phase === 'ready';
 	const [filter, setFilter] = useState<Partial<AdvanceFiler>>({});
+
+	// The backend `filter`/`advancefilter` endpoints require a server-validated
+	// AdvanceFiler checksum we haven't reversed yet, so the rich facets don't filter
+	// server-side. Until then, browse by content type (the one facet that maps to a
+	// working endpoint) so the page is never blank: movies / series / all.
+	const endpoint =
+		search.more ||
+		(filter.contentType === 1 ? 'latestmovies' : filter.contentType === 2 ? 'latestseries' : 'featured');
 	const [view, setView] = useState<'grid' | 'list'>('grid');
 	const [panelOpen, setPanelOpen] = useState(false);
 

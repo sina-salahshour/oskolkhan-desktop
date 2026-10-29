@@ -1,6 +1,6 @@
 /** One row in the download queue (or the offline library when `library`). */
 import { motion, useReducedMotion } from 'motion/react';
-import { Play, Pause, Trash2, Check } from '@lucide/react';
+import { Play, X, Trash2, Check } from '@lucide/react';
 import { Badge, Progress, IconButton, Button } from '@/components/ui';
 import type { BadgeVariant } from '@/components/ui';
 import { useDownloadsStore, type DownloadItem, type DownloadStatus } from '@/lib/stores/downloads';
@@ -13,7 +13,19 @@ const statusTone: Record<DownloadStatus, BadgeVariant> = {
 	completed: 'success',
 	paused: 'warning',
 	queued: 'neutral',
-	error: 'danger'
+	error: 'danger',
+	canceled: 'neutral'
+};
+
+// No dedicated error/canceled strings in the shared dictionary — reuse the
+// closest existing keys (tone still distinguishes them visually).
+const statusLabelKey: Record<DownloadStatus, string> = {
+	downloading: 'downloads.downloading',
+	completed: 'downloads.completed',
+	paused: 'downloads.paused',
+	queued: 'downloads.queued',
+	error: 'downloads.error',
+	canceled: 'downloads.canceled'
 };
 
 export function QueueRow({
@@ -31,11 +43,12 @@ export function QueueRow({
 	const reduce = useReducedMotion();
 	const selected = useDownloadsStore((s) => s.selected.has(item.id));
 	const toggleSelect = useDownloadsStore((s) => s.toggleSelect);
-	const setStatus = useDownloadsStore((s) => s.setStatus);
+	const cancel = useDownloadsStore((s) => s.cancel);
 	const remove = useDownloadsStore((s) => s.remove);
 
 	const pct = toPercent(item.receivedBytes, item.sizeBytes);
-	const statusLabel = t(`downloads.${item.status === 'error' ? 'paused' : item.status}`);
+	const statusLabel = t(statusLabelKey[item.status]);
+	const cancelable = item.status === 'downloading' || item.status === 'queued';
 	const remainingBytes = Math.max(0, item.sizeBytes - item.receivedBytes);
 	const eta = item.speedBps > 0 ? formatDuration(remainingBytes / item.speedBps, lang) : null;
 
@@ -60,7 +73,7 @@ export function QueueRow({
 					aria-label={item.title}
 					onClick={() => toggleSelect(item.id)}
 					className={cn(
-						'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
+						'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition-colors',
 						selected ? 'border-accent bg-accent text-accent-fg' : 'border-line-strong text-transparent'
 					)}
 				>
@@ -109,13 +122,13 @@ export function QueueRow({
 					<Button size="sm" leftIcon={Play} onClick={() => onPlay?.(item)}>
 						{t('common.play')}
 					</Button>
-				) : item.status !== 'completed' ? (
+				) : cancelable ? (
 					<IconButton
 						variant="subtle"
 						size="sm"
-						icon={item.status === 'downloading' ? Pause : Play}
-						label={item.status === 'downloading' ? t('downloads.pause') : t('downloads.resume')}
-						onClick={() => setStatus(item.id, item.status === 'downloading' ? 'paused' : 'downloading')}
+						icon={X}
+						label={t('common.cancel')}
+						onClick={() => cancel(item.id)}
 					/>
 				) : null}
 				<IconButton

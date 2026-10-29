@@ -104,8 +104,10 @@ export default function AccountScreen() {
 		void navigate({ to: '/auth' });
 	}
 
-	const faqItems: FaqEntry[] = (faq.data?.items ?? []).map((it) => ({
-		id: String(it.id),
+	const faqItems: FaqEntry[] = (faq.data?.items ?? []).map((it, i) => ({
+		// Backend ids aren't unique across FAQ entries — suffix the index so each
+		// accordion item keys + toggles independently.
+		id: `${it.id}-${i}`,
 		q: it.title1,
 		a: it.title2
 	}));

@@ -5,15 +5,15 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Send, ExternalLink } from '@lucide/react';
+import { ExternalLink } from '@lucide/react';
+import QRCode from 'qrcode';
 import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
 	Button,
-	Spinner,
-	Icon
+	Spinner
 } from '@/components/ui';
 import { useTelegramStart, useTelegramPoll } from '@/lib/query';
 import { usePreload } from '@/lib/query';
@@ -21,8 +21,6 @@ import { isApiError } from '@/lib/api';
 import { useI18n } from '@/i18n';
 
 const POLL_MS = 5000;
-// deterministic pseudo-QR pattern (13×13)
-const CELLS = Array.from({ length: 169 }, (_, i) => (i * 7 + ((i * i) % 11)) % 3 !== 0);
 
 export function TelegramDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
 	const { t } = useI18n();
@@ -32,8 +30,34 @@ export function TelegramDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 	const preload = usePreload();
 
 	const [botUrl, setBotUrl] = useState('');
+	const [qrUrl, setQrUrl] = useState('');
 	const [error, setError] = useState('');
 	const doneRef = useRef(false);
+
+	// Render a REAL, scannable QR of the login URL (the old "QR" was a decorative
+	// pattern that encoded nothing). Plain black-on-white, good quiet zone.
+	useEffect(() => {
+		if (!botUrl) {
+			setQrUrl('');
+			return;
+		}
+		let alive = true;
+		QRCode.toDataURL(botUrl, {
+			errorCorrectionLevel: 'M',
+			margin: 2,
+			width: 256,
+			color: { dark: '#0b0b0d', light: '#ffffff' }
+		})
+			.then((u) => {
+				if (alive) setQrUrl(u);
+			})
+			.catch(() => {
+				if (alive) setQrUrl('');
+			});
+		return () => {
+			alive = false;
+		};
+	}, [botUrl]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -91,15 +115,14 @@ export function TelegramDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 				<div className="flex flex-col items-center gap-4 text-center">
 					<p className="text-sm text-muted">{t('auth.telegramScan')}</p>
 
-					<div className="relative rounded-xl bg-white p-3 shadow-lg">
-						<div className="grid h-44 w-44 grid-cols-[repeat(13,1fr)] gap-px">
-							{CELLS.map((on, i) => (
-								<span key={i} className={on ? 'rounded-[1px] bg-[#0b0b0d]' : ''} />
-							))}
-						</div>
-						<div className="absolute left-1/2 top-1/2 flex h-[52px] w-[52px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border-4 border-white bg-accent text-accent-fg">
-							<Icon icon={Send} size={24} />
-						</div>
+					<div className="rounded-xl bg-white p-3 shadow-lg">
+						{qrUrl ? (
+							<img src={qrUrl} width={200} height={200} alt="Telegram login QR" className="block h-[200px] w-[200px]" />
+						) : (
+							<div className="grid h-[200px] w-[200px] place-items-center">
+								<Spinner size={24} label="QR" />
+							</div>
+						)}
 					</div>
 
 					{botUrl ? (

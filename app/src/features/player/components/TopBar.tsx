@@ -34,9 +34,6 @@ export function TopBar({ onBack }: TopBarProps) {
 				<b className="truncate text-sm font-semibold">{name}</b>
 				{ep ? <small className="text-xs text-white/70">{ep}</small> : null}
 			</div>
-			<span className="ms-auto rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
-				{t('player.playbackPhase2')}
-			</span>
 		</motion.div>
 	);
 }

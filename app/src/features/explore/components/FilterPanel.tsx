@@ -326,7 +326,7 @@ export function FilterPanel({ onChange }: FilterPanelProps) {
 				{/* Match toggles */}
 				<Section title={t('common.filter')}>
 					<div className="flex flex-col gap-3">
-						<label className="flex items-center justify-between gap-3 text-sm text-fg">
+						<label className="flex cursor-pointer items-center justify-between gap-3 text-sm text-fg">
 							<span>{t('explore.genreMatch')}</span>
 							<Switch
 								checked={genreMatch}
@@ -336,7 +336,7 @@ export function FilterPanel({ onChange }: FilterPanelProps) {
 								}}
 							/>
 						</label>
-						<label className="flex items-center justify-between gap-3 text-sm text-fg">
+						<label className="flex cursor-pointer items-center justify-between gap-3 text-sm text-fg">
 							<span>{t('explore.ratingMatch')}</span>
 							<Switch
 								checked={ratingMatch}

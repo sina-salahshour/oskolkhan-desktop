@@ -63,7 +63,7 @@ export function SegmentedControl({
 						disabled={opt.disabled}
 						className={cn(
 							'relative inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors duration-150',
-							'disabled:pointer-events-none disabled:opacity-50',
+							'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
 							active ? 'text-accent' : 'text-muted hover:text-fg',
 							focusRing,
 							sizes[size],

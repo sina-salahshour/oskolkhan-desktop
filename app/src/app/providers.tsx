@@ -26,13 +26,15 @@ export function createQueryClient(): QueryClient {
 	return new QueryClient({
 		defaultOptions: {
 			queries: {
+				// Retry only transient failures (notReady/network/server), max 3 times.
+				// Never retry auth/decode/unimplemented or anything else.
 				retry: (count, error) => {
-					// Never retry auth/unimplemented; retry transient network/server a bit.
-					if (isApiError(error) && (error.code === 'auth' || error.code === 'unimplemented')) {
-						return false;
-					}
-					return count < 2;
+					if (count >= 3) return false;
+					if (!isApiError(error)) return false;
+					return error.code === 'notReady' || error.code === 'network' || error.code === 'server';
 				},
+				// Exponential backoff (1s,2s,4s...) capped at 30s, with 50-100% jitter.
+				retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000) * (0.5 + Math.random() * 0.5),
 				staleTime: 30_000,
 				refetchOnWindowFocus: false
 			},

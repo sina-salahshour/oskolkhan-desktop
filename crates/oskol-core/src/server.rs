@@ -219,7 +219,7 @@ async fn stream(
                     || code == StatusCode::RANGE_NOT_SATISFIABLE
                     || code == StatusCode::NOT_MODIFIED;
                 if ok {
-                    return forward(resp, &method);
+                    return forward(resp, &method, Some(media_content_type(&urn)));
                 }
                 tracing::debug!(host = %route.host, ip = %route.ip, %code, "media mirror miss");
                 last = StatusCode::from_u16(code.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -230,16 +230,44 @@ async fn stream(
     status(last)
 }
 
+/// Guess a video MIME from a urn/filename extension so external players (VLC
+/// especially) pick the right demuxer — the CDN serves `application/octet-stream`,
+/// which VLC can't resolve from our extension-less `/stream` URL (mpv probes bytes
+/// and doesn't care, but VLC does).
+fn media_content_type(urn: &str) -> &'static str {
+    let ext = urn.rsplit(['/', '.']).next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "mkv" => "video/x-matroska",
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "avi" => "video/x-msvideo",
+        "mov" => "video/quicktime",
+        "ts" | "m2ts" | "mts" => "video/mp2t",
+        "flv" => "video/x-flv",
+        "wmv" | "asf" => "video/x-ms-asf",
+        "ogv" | "ogm" => "video/ogg",
+        "mpg" | "mpeg" => "video/mpeg",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Forward an upstream media response (status + the whitelisted headers), streaming the
-/// body for `GET` and dropping it for `HEAD`.
-fn forward(upstream: reqwest::Response, method: &Method) -> Response<Body> {
+/// body for `GET` and dropping it for `HEAD`. `ct_override` replaces the upstream
+/// Content-Type when set (the CDN sends octet-stream; we send the real container type).
+fn forward(upstream: reqwest::Response, method: &Method, ct_override: Option<&str>) -> Response<Body> {
     let mut builder = Response::builder().status(upstream.status().as_u16());
     for name in FORWARD_RESPONSE_HEADERS {
+        if ct_override.is_some() && *name == header::CONTENT_TYPE {
+            continue; // replaced below
+        }
         if let Some(v) = upstream.headers().get(name.as_str()) {
             if let Ok(v) = HeaderValue::from_bytes(v.as_bytes()) {
                 builder = builder.header(name, v);
             }
         }
+    }
+    if let Some(ct) = ct_override {
+        builder = builder.header(header::CONTENT_TYPE, ct);
     }
     builder = builder.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*");
     if method == Method::HEAD {
@@ -369,7 +397,21 @@ async fn hls_open(
         .subs
         .iter()
         .enumerate()
-        .map(|(i, s)| serde_json::json!({ "id": format!("s{i}"), "label": sub_label(s, i), "lang": s.lang, "source": "server", "text": s.text }))
+        .map(|(i, s)| {
+            // Text subs expose a ready WebVTT URL the renderer can fetch; image
+            // subs (PGS/VOBSUB) have none, so the menu can hide/disable them.
+            let vtt = s
+                .text
+                .then(|| serde_json::Value::String(format!("/{}/hls/{}/sub{:05}.vtt", token, sid, i)));
+            serde_json::json!({
+                "id": format!("s{i}"),
+                "label": sub_label(s, i),
+                "lang": s.lang,
+                "source": "server",
+                "text": s.text,
+                "vtt": vtt,
+            })
+        })
         .collect();
     let body = serde_json::json!({
         "playlist": format!("/{}/hls/{}/index.m3u8", token, sid),
@@ -414,10 +456,12 @@ async fn hls_file(
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    // Otherwise it must be segNNNNN.ts (a TS segment) or thumbNNNNN.jpg (a preview).
+    // Otherwise it must be segNNNNN.ts (TS segment), sbNNNNN.jpg (storyboard
+    // preview) or subNNNNN.vtt (extracted subtitle track).
     enum Kind {
         Seg(usize),
         Thumb(usize),
+        Sub(usize),
     }
     let parse_n = |s: &str, pre: &str, suf: &str| -> Option<usize> {
         s.strip_prefix(pre)
@@ -429,6 +473,8 @@ async fn hls_file(
         (Kind::Seg(i), "video/mp2t", "no-store")
     } else if let Some(n) = parse_n(&file, "sb", ".jpg") {
         (Kind::Thumb(n), "image/jpeg", "public, max-age=86400")
+    } else if let Some(n) = parse_n(&file, "sub", ".vtt") {
+        (Kind::Sub(n), "text/vtt; charset=utf-8", "public, max-age=86400")
     } else {
         return status(StatusCode::NOT_FOUND);
     };
@@ -456,6 +502,13 @@ async fn hls_file(
                         return status(StatusCode::NOT_FOUND);
                     }
                     session.sb_job(n)
+                }
+                Kind::Sub(n) => {
+                    // Only text-based subs can be muxed to WebVTT.
+                    if session.plan.subs.get(n).map(|s| s.text) != Some(true) {
+                        return status(StatusCode::NOT_FOUND);
+                    }
+                    session.sub_vtt_job(n)
                 }
             }
         };

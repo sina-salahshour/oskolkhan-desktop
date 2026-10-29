@@ -58,7 +58,7 @@ function ToastRow({ toast, onDismiss }: { toast: ToastModel; onDismiss: (id: str
 							toast.action?.onClick();
 							onDismiss(toast.id);
 						}}
-						className="mt-2 text-xs font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+						className="mt-2 cursor-pointer text-xs font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
 					>
 						{toast.action.label}
 					</button>
@@ -68,7 +68,7 @@ function ToastRow({ toast, onDismiss }: { toast: ToastModel; onDismiss: (id: str
 				type="button"
 				aria-label="Close"
 				onClick={() => onDismiss(toast.id)}
-				className="rounded-md p-1 text-subtle outline-none transition-colors hover:bg-surface-2 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
+				className="cursor-pointer rounded-md p-1 text-subtle outline-none transition-colors hover:bg-surface-2 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
 			>
 				<Icon icon={X} size={16} />
 			</button>

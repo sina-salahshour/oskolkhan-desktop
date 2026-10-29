@@ -54,7 +54,7 @@ export const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>
 			value={value}
 			className={cn(
 				'relative inline-flex h-10 items-center gap-2 whitespace-nowrap px-3 text-sm font-medium transition-colors duration-150',
-				'rounded-t-md text-muted hover:text-fg data-[state=active]:text-accent disabled:pointer-events-none disabled:opacity-50',
+				'rounded-t-md text-muted hover:text-fg data-[state=active]:text-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
 				focusRing,
 				className,
 			)}

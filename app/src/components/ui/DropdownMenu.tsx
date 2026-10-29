@@ -59,8 +59,8 @@ export const DropdownMenuContent = React.forwardRef<HTMLDivElement, DropdownMenu
 );
 
 const itemBase =
-	'relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg outline-none transition-colors ' +
-	'data-[highlighted]:bg-surface-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+	'relative flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg outline-none transition-colors ' +
+	'data-[highlighted]:bg-surface-2 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50';
 
 export interface DropdownMenuItemProps extends React.ComponentPropsWithoutRef<typeof RD.Item> {
 	leftIcon?: LucideIcon;

@@ -38,17 +38,26 @@ export function SubtitleMenu({ open, onOpenChange }: SubtitleMenuProps) {
 					<span>{t('common.none')}</span>
 					{trackId === null ? <Icon icon={Check} size={16} /> : null}
 				</button>
-				{tracks.map((s) => (
-					<button
-						key={s.id}
-						type="button"
-						className={cn(menuRow, trackId === s.id && menuRowOn)}
-						onClick={() => patch({ subtitleTrackId: s.id })}
-					>
-						<span>{s.label}</span>
-						{trackId === s.id ? <Icon icon={Check} size={16} /> : null}
-					</button>
-				))}
+				{tracks.map((s) => {
+					// Image-based subs (PGS/VOBSUB) can't be rendered as text — show
+					// them disabled with a hint rather than silently doing nothing.
+					const renderable = s.text !== false;
+					return (
+						<button
+							key={s.id}
+							type="button"
+							disabled={!renderable}
+							className={cn(menuRow, trackId === s.id && menuRowOn, !renderable && 'cursor-not-allowed opacity-50')}
+							onClick={() => renderable && patch({ subtitleTrackId: s.id })}
+						>
+							<span>
+								{s.label}
+								{!renderable ? ` · ${t('player.imageSub')}` : ''}
+							</span>
+							{trackId === s.id ? <Icon icon={Check} size={16} /> : null}
+						</button>
+					);
+				})}
 				<button type="button" className={cn(menuRow, menuRowGhost, 'justify-start')}>
 					<Icon icon={Folder} size={16} />
 					{t('player.loadSubtitle')}

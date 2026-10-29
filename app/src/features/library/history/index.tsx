@@ -15,7 +15,6 @@ export default function HistoryScreen() {
 			emptyIcon={Clock}
 			emptyTitle={t('history.empty')}
 			query={query}
-			showProgress
 			onRemove={(id) => removeWatch.mutateAsync(id)}
 		/>
 	);

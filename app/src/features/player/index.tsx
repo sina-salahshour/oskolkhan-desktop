@@ -6,7 +6,7 @@ import { Copy, ExternalLink, Play } from '@lucide/react';
 import { Button, Icon, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
 import type { FileV2, GroupInfoV2 } from '../../lib/api/types';
-import { useFiles, useItem } from '../../lib/query';
+import { useFiles, useItem, useWatch } from '../../lib/query';
 import { usePlayerStore } from '../../lib/stores/player';
 import { useSessionStore } from '../../lib/stores/session';
 import { cn } from '../../lib/util/cn';
@@ -16,6 +16,7 @@ import { SubtitlePanel } from './components/SubtitlePanel';
 import { TopBar } from './components/TopBar';
 import { buildStreamUrl } from './lib/playback';
 import { usePlayerController } from './hooks/usePlayerController';
+import { useActiveCue } from './lib/subtitles';
 import { usePlayerChrome, type SubtitleEdge } from './store';
 
 interface Found {
@@ -73,6 +74,37 @@ export default function PlayerScreen() {
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const controller = usePlayerController(videoRef);
+
+	// Record watch progress to the backend so the title appears in history and the
+	// position is saved (operator/watch). Every 25s while playing + once on leave,
+	// provided at least 20s has been watched. (Reading the position back for in-app
+	// resume needs the native websocket sync, which we don't speak yet.)
+	const watch = useWatch();
+	const watchRef = useRef(watch);
+	watchRef.current = watch;
+	useEffect(() => {
+		const record = () => {
+			const p = usePlayerStore.getState();
+			const tid = p.source?.title?.id;
+			const fid = p.source?.file?.id;
+			if (!tid || !fid || p.duration <= 0 || p.position < 20) return;
+			watchRef.current.mutate({
+				fid,
+				tid,
+				length: Math.round(p.duration),
+				last: Math.round(p.position),
+				on: 1
+			});
+		};
+		const id = setInterval(() => {
+			if (usePlayerStore.getState().playing) record();
+		}, 25000);
+		return () => {
+			clearInterval(id);
+			record();
+		};
+	}, []);
+
 	const status = usePlayerChrome((s) => s.status);
 	const errorKind = usePlayerChrome((s) => s.playbackErrorKind);
 	const holdingFast = usePlayerChrome((s) => s.holdingFast);
@@ -80,7 +112,16 @@ export default function PlayerScreen() {
 	const panel = usePlayerChrome((s) => s.panel);
 	const subId = usePlayerChrome((s) => s.subtitleTrackId);
 	const subStyle = usePlayerChrome((s) => s.subtitleStyle);
+	const subTracks = usePlayerChrome((s) => s.subtitleTracks);
+	const subSync = usePlayerChrome((s) => s.subtitleSync);
 	const patch = usePlayerChrome((s) => s.patch);
+
+	// Real subtitle rendering: fetch + parse the selected text track's WebVTT and
+	// show the cue active at the current position (shifted by the sync delay). The
+	// previous build only ever painted a hardcoded sample string.
+	const position = usePlayerStore((s) => s.position);
+	const activeSub = subTracks.find((s) => s.id === subId) ?? null;
+	const cueText = useActiveCue(activeSub?.vtt ?? null, position, subSync.delayMs);
 
 	const itemQ = useItem(titleId);
 	const filesQ = useFiles(titleId);
@@ -312,25 +353,31 @@ export default function PlayerScreen() {
 						</motion.div>
 					) : null}
 				</AnimatePresence>
-				{subId ? (
-					<div
-						className="pointer-events-none absolute inset-x-0 flex justify-center px-6"
-						style={{ bottom: `${subStyle.position}%` }}
-					>
-						<span
-							className="rounded px-2 py-0.5 text-center"
-							style={{
-								fontFamily: `'${subStyle.font} Variable', '${subStyle.font}', sans-serif`,
-								fontSize: `${(subStyle.size / 100) * 1.8}rem`,
-								color: subStyle.color,
-								textShadow: edgeShadow(subStyle.edge),
-								background: `rgba(0,0,0,${subStyle.background / 100})`,
-							}}
+				{(() => {
+					// Show the active cue; while the style panel is open, fall back to a
+					// sample line so the user can see their styling even between cues.
+					const text = cueText || (panel === 'style' ? t('player.subtitlePreview') : '');
+					if (!subId || !text) return null;
+					return (
+						<div
+							className="pointer-events-none absolute inset-x-0 flex justify-center px-6"
+							style={{ bottom: `${subStyle.position}%` }}
 						>
-							نمونه‌ی نمایش زیرنویس — subtitle preview
-						</span>
-					</div>
-				) : null}
+							<span
+								className="rounded px-2 py-0.5 text-center whitespace-pre-line"
+								style={{
+									fontFamily: `'${subStyle.font} Variable', '${subStyle.font}', sans-serif`,
+									fontSize: `${(subStyle.size / 100) * 1.8}rem`,
+									color: subStyle.color,
+									textShadow: edgeShadow(subStyle.edge),
+									background: `rgba(0,0,0,${subStyle.background / 100})`,
+								}}
+							>
+								{text}
+							</span>
+						</div>
+					);
+				})()}
 			</div>
 
 			<AnimatePresence>

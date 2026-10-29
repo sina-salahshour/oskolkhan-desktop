@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/oskol-core"]
+members = ["crates/oskol-core"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tracing = "0.1"
 
 [profile.release]
-lto = "thin"
+# LTO is intentionally OFF: ThinLTO drops `ring`'s prebuilt C/asm objects under
+# the default rust-lld linker, giving "undefined symbol: ring_core_*" at link
+# time. The sidecar isn't hot enough to need LTO.
+lto = false
 codegen-units = 1
 strip = true

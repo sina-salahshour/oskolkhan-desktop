@@ -38,7 +38,7 @@ export const Chip = React.forwardRef<HTMLButtonElement, ChipProps>(function Chip
 				selected
 					? 'border-accent bg-accent-soft text-accent'
 					: 'border-line bg-transparent text-muted hover:bg-surface-2 hover:text-fg',
-				disabled && 'pointer-events-none opacity-50',
+				disabled && 'cursor-not-allowed opacity-50',
 				className,
 			)}
 			whileTap={animate ? { scale: 0.97 } : undefined}
@@ -49,7 +49,7 @@ export const Chip = React.forwardRef<HTMLButtonElement, ChipProps>(function Chip
 				disabled={disabled}
 				aria-pressed={selected}
 				className={cn(
-					'inline-flex h-full items-center gap-1.5 rounded-full ps-3 font-medium',
+					'inline-flex h-full cursor-pointer items-center gap-1.5 rounded-full ps-3 font-medium disabled:cursor-not-allowed',
 					onRemove ? 'pe-1.5' : 'pe-3',
 					focusRing,
 				)}
@@ -64,7 +64,7 @@ export const Chip = React.forwardRef<HTMLButtonElement, ChipProps>(function Chip
 					aria-label={removeLabel}
 					disabled={disabled}
 					onClick={onRemove}
-					className={cn('me-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-line', focusRing)}
+					className={cn('me-1.5 inline-flex h-5 w-5 cursor-pointer items-center disabled:cursor-not-allowed justify-center rounded-full hover:bg-line', focusRing)}
 				>
 					<Icon icon={X} size={12} />
 				</button>

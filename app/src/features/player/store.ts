@@ -24,6 +24,10 @@ export interface SubtitleTrack {
 	label: string;
 	lang: string;
 	source: 'embedded' | 'server' | 'local' | 'lan';
+	/** text-based (renderable) vs image-based (can't render). */
+	text?: boolean;
+	/** Absolute WebVTT URL for the cues (text subs only). */
+	vtt?: string | null;
 }
 
 export type SubtitleEdge = 'none' | 'outline' | 'drop' | 'raised';
@@ -53,7 +57,6 @@ export interface PlayerChromeState {
 	buffered: number;
 	playbackErrorKind: 'unsupported' | 'network' | 'generic' | null;
 	holdingFast: boolean;
-	pip: boolean;
 	lock: boolean;
 	audioTracks: AudioTrack[];
 	audioTrackId: string;
@@ -84,7 +87,6 @@ const INITIAL = {
 	buffered: 0,
 	playbackErrorKind: null as 'unsupported' | 'network' | 'generic' | null,
 	holdingFast: false,
-	pip: false,
 	lock: false,
 	audioTracks: [] as AudioTrack[],
 	audioTrackId: '',

@@ -24,8 +24,9 @@ export interface PlayerController {
 	startNextCountdown: (from?: number) => void;
 	cancelNextCountdown: () => void;
 	toggleFullscreen: (stage: HTMLElement | null) => void;
-	togglePip: () => void;
 	toggleLock: () => void;
+	/** Switch audio track (reloads the HLS session with that audio, resuming position). */
+	setAudioTrack: (id: string) => void;
 }
 
 export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>): PlayerController {
@@ -139,6 +140,20 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 			}
 		};
 
+		const setAudioTrack = (id: string) => {
+			if (chrome().audioTrackId === id) return;
+			chrome().patch({ audioTrackId: id });
+			const req = lastReqRef.current;
+			if (!req) return;
+			// Audio position is the track's index in the list ('a0' -> 0, 'a1' -> 1).
+			const pos = Math.max(0, Number.parseInt(id.replace(/^a/, ''), 10) || 0);
+			const at = player().position;
+			const wasPlaying = playIntentRef.current;
+			void load({ ...req, audioPos: pos, startAt: at }).then(() => {
+				if (wasPlaying) play();
+			});
+		};
+
 		return {
 			load,
 			play,
@@ -154,8 +169,8 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 			startNextCountdown,
 			cancelNextCountdown,
 			toggleFullscreen,
-			togglePip: () => chrome().patch({ pip: !chrome().pip }),
 			toggleLock: () => chrome().patch({ lock: !chrome().lock }),
+			setAudioTrack,
 		};
 	}, [clearCountdownTimer]);
 
@@ -173,12 +188,19 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 				label: s.label,
 				lang: s.lang ?? '',
 				source: s.source,
+				text: s.text,
+				vtt: s.vtt ?? null,
 			}));
+			// Preserve the current selection across a reload (an audio switch re-opens
+			// the session), else default: first audio, subtitles OFF.
+			const cur = usePlayerChrome.getState();
+			const audioId = audioTracks.some((a) => a.id === cur.audioTrackId) ? cur.audioTrackId : (audioTracks[0]?.id ?? '');
+			const subId = cur.subtitleTrackId && subtitleTracks.some((s) => s.id === cur.subtitleTrackId) ? cur.subtitleTrackId : null;
 			usePlayerChrome.getState().patch({
 				audioTracks,
-				audioTrackId: audioTracks[0]?.id ?? '',
+				audioTrackId: audioId,
 				subtitleTracks,
-				subtitleTrackId: subtitleTracks[0]?.id ?? null,
+				subtitleTrackId: subId,
 				thumbBase: meta.thumbBase ?? null,
 				storyboardInterval: meta.storyboardInterval ?? 10,
 				storyboardCount: meta.storyboardCount ?? 0,

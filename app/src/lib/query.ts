@@ -177,12 +177,42 @@ export function useGetMore(args: Omit<GetMoreArgs, 'page'>, opts?: InfOpts) {
 	});
 }
 
+// Likes/Watches are 1-indexed (page 0 returns empty, like the home "see all"
+// getMore endpoint) — start at page 1 and advance from there.
+const nextPage1 = (last: GetMore, all: GetMore[]) => (last?.hasmove ? all.length + 1 : undefined);
+
 export function useLikes(type: number, opts?: InfOpts) {
 	return useInfiniteQuery({
 		queryKey: qk.likes(type),
 		queryFn: ({ pageParam }) => client.likes(type, pageParam),
-		initialPageParam: 0,
-		getNextPageParam: nextPage,
+		initialPageParam: 1,
+		getNextPageParam: nextPage1,
+		...opts
+	});
+}
+
+/** Query key for the set of the user's liked title ids (all pages, type=0). */
+export const LIKED_IDS_KEY = ['likedIds'] as const;
+
+/**
+ * The set of all title ids the signed-in user has liked. There's no "is this
+ * liked?" endpoint (the native app learns this over a websocket sync we don't
+ * speak), so we page through GetLikes once and cache the id set — used to show the
+ * correct like state on a title, and mutated optimistically on like/unlike.
+ */
+export function useLikedIds(opts?: QOpts<Set<number>>) {
+	return useQuery({
+		queryKey: LIKED_IDS_KEY,
+		queryFn: async () => {
+			const ids = new Set<number>();
+			for (let page = 1; page <= 100; page++) {
+				const res = await client.likes(0, page);
+				for (const it of res.items ?? []) ids.add(it.id);
+				if (!res.hasmove) break;
+			}
+			return ids;
+		},
+		staleTime: 5 * 60_000,
 		...opts
 	});
 }
@@ -191,8 +221,8 @@ export function useWatches(type: number, opts?: InfOpts) {
 	return useInfiniteQuery({
 		queryKey: qk.watches(type),
 		queryFn: ({ pageParam }) => client.watches(type, pageParam),
-		initialPageParam: 0,
-		getNextPageParam: nextPage,
+		initialPageParam: 1,
+		getNextPageParam: nextPage1,
 		...opts
 	});
 }
@@ -203,8 +233,16 @@ export function useLike() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (args: LikeArgs) => client.like(args),
-		onSuccess: () => {
+		onSuccess: (_data, args) => {
 			void qc.invalidateQueries({ queryKey: ['likes'] });
+			// Keep the liked-id set consistent (title like state) without a refetch.
+			qc.setQueryData<Set<number>>(LIKED_IDS_KEY, (old) => {
+				if (!old) return old;
+				const s = new Set(old);
+				if (args.on) s.add(args.item);
+				else s.delete(args.item);
+				return s;
+			});
 		}
 	});
 }

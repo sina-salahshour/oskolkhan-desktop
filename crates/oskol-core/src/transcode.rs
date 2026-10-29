@@ -35,7 +35,8 @@ pub struct AudioInfo {
     pub copy: bool,
 }
 
-/// One subtitle stream (listed for the UI; extraction is a later phase).
+/// One subtitle stream. Text-based ones are extracted to WebVTT on demand
+/// (`sub_vtt_job`); image-based ones (PGS/VOBSUB) are listed but can't render.
 #[derive(Debug, Clone)]
 pub struct SubInfo {
     pub index: i64,
@@ -317,6 +318,31 @@ impl HlsSession {
         (0..self.storyboard_count()).map(|n| self.sb_job(n)).collect()
     }
 
+    /// Build a job that extracts the `pos`-th subtitle stream to a WebVTT file
+    /// (`subNNNNN.vtt`). Only valid for text-based subs — the caller checks
+    /// `plan.subs[pos].text` first (image subs like PGS can't become WebVTT).
+    pub fn sub_vtt_job(&self, pos: usize) -> SegmentJob {
+        let index = self.plan.subs[pos].index;
+        let out_path = self.dir.join(format!("sub{pos:05}.vtt"));
+        let mut a: Vec<String> = Vec::new();
+        for s in [
+            "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-rw_timeout", "30000000",
+            "-user_agent", "oskol-core",
+        ] {
+            a.push(s.to_string());
+        }
+        a.push("-i".into());
+        a.push(self.local_url.clone());
+        a.push("-map".into());
+        a.push(format!("0:{index}"));
+        a.push("-c:s".into());
+        a.push("webvtt".into());
+        a.push("-f".into());
+        a.push("webvtt".into());
+        a.push(out_path.to_string_lossy().to_string());
+        SegmentJob { index: pos, out_path, args: a }
+    }
+
     fn segment_args(&self, start: f64, end: f64, out_path: &std::path::Path) -> Vec<String> {
         let p = &self.plan;
         let mut a: Vec<String> = Vec::new();
@@ -351,6 +377,7 @@ impl HlsSession {
             push(&mut a, "-c:v");
             push(&mut a, "copy");
         } else {
+            // Keep native resolution (the display is 2K/HDR — no downscaling).
             push(&mut a, "-c:v");
             push(&mut a, "h264_nvenc");
             push(&mut a, "-preset");

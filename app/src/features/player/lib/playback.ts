@@ -14,6 +14,8 @@ export interface PlaybackRequest {
 	playlist: FileV2[];
 	index: number;
 	startAt?: number;
+	/** which audio track (position in the file's audio list) to transcode. */
+	audioPos?: number;
 }
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
@@ -32,8 +34,9 @@ export function buildStreamUrl(assetBase: string, file: FileV2): string {
 }
 
 /** The core `/hls/open` endpoint: probes + starts the ffmpeg HLS session. */
-export function buildHlsOpenUrl(assetBase: string, file: FileV2): string {
-	return `${assetBase}/hls/open?urn=${encodeURIComponent(file.urn)}&id=${file.id}`;
+export function buildHlsOpenUrl(assetBase: string, file: FileV2, audioPos = 0): string {
+	const a = audioPos > 0 ? `&audio=${audioPos}` : '';
+	return `${assetBase}/hls/open?urn=${encodeURIComponent(file.urn)}&id=${file.id}${a}`;
 }
 
 /** Track metadata the HLS source discovers from ffprobe, for the chrome store. */
@@ -47,6 +50,10 @@ export interface PlaybackSubtitleTrack {
 	label: string;
 	lang: string | null;
 	source: 'server' | 'embedded';
+	/** text-based (renderable) vs image-based (PGS/VOBSUB — can't become WebVTT). */
+	text?: boolean;
+	/** Absolute WebVTT URL to fetch the cues from (text subs only; else null). */
+	vtt?: string | null;
 }
 export interface PlaybackMeta {
 	duration: number;
@@ -406,7 +413,7 @@ export class HlsPlaybackSource implements PlaybackSource {
 		const assetBase = this.getAssetBase();
 		let open: HlsOpenResponse;
 		try {
-			const res = await fetch(buildHlsOpenUrl(assetBase, file));
+			const res = await fetch(buildHlsOpenUrl(assetBase, file, req.audioPos ?? 0));
 			if (!res.ok) throw new Error(`hls open ${res.status}`);
 			open = (await res.json()) as HlsOpenResponse;
 		} catch (e) {
@@ -428,10 +435,23 @@ export class HlsPlaybackSource implements PlaybackSource {
 			this.emit({ status: 'error', errorKind: 'generic' });
 			return;
 		}
+		// Resolve each text sub's WebVTT path (served relative to the token root)
+		// to an absolute URL on the asset origin, so the renderer can fetch it.
+		const subtitleTracks = (open.subtitleTracks ?? []).map((s) => {
+			let vtt: string | null = null;
+			if (s.vtt) {
+				try {
+					vtt = new URL(s.vtt, assetBase).href;
+				} catch {
+					vtt = null;
+				}
+			}
+			return { ...s, vtt };
+		});
 		this.lastMeta = {
 			duration: open.duration || 0,
 			audioTracks: open.audioTracks ?? [],
-			subtitleTracks: open.subtitleTracks ?? [],
+			subtitleTracks,
 			thumbBase,
 			storyboardInterval: open.storyboardInterval,
 			storyboardCount: open.storyboardCount,

@@ -26,6 +26,21 @@ export interface LogEntry {
 
 export type NavDirection = 'back' | 'forward'
 
+/** An external media player detected on the host (id + display name). */
+export interface ExternalPlayer {
+  id: string
+  name: string
+}
+
+/** A single download progress / terminal event forwarded from the main process. */
+export interface DownloadProgress {
+  id: string
+  received: number
+  total: number
+  state: 'active' | 'done' | 'error' | 'canceled'
+  path?: string
+}
+
 export interface OskolApi {
   /** Synchronous: the core sidecar endpoint for lib/api/client.ts. */
   coreEndpoint(): CoreEndpoint
@@ -41,6 +56,17 @@ export interface OskolApi {
   log(entry: LogEntry): void
   /** Subscribe to native-menu Back/Forward; returns an unsubscribe fn. */
   onNav(cb: (dir: NavDirection) => void): () => void
+  /** External media players detected on the host (for "open in…"). */
+  players: ExternalPlayer[]
+  /** Launch a (local /stream) URL in a detected external player; resolves true on spawn. */
+  openInPlayer(playerId: string, url: string): Promise<boolean>
+  /** Start a streamed download of `url` to `destDir` (a group folder) or the app's
+   *  default downloads dir; resolves the download id. */
+  download(url: string, filename: string, destDir?: string): Promise<string>
+  /** Abort an in-flight download (by id) and delete its partial file. */
+  cancelDownload(id: string): Promise<void>
+  /** Subscribe to download progress/terminal events; returns an unsubscribe fn. */
+  onDownloadProgress(cb: (p: DownloadProgress) => void): () => void
   /** process.platform of the host. */
   platform: NodeJS.Platform
   /** The Electron app version. */
@@ -53,6 +79,7 @@ const boot = ipcRenderer.sendSync('oskol:bootinfo') as {
   token: string
   platform: NodeJS.Platform
   appVersion: string
+  players?: ExternalPlayer[]
 }
 
 const api: OskolApi = {
@@ -66,6 +93,15 @@ const api: OskolApi = {
     const listener = (_e: Electron.IpcRendererEvent, dir: NavDirection) => cb(dir)
     ipcRenderer.on('oskol:nav', listener)
     return () => ipcRenderer.removeListener('oskol:nav', listener)
+  },
+  players: boot.players ?? [],
+  openInPlayer: (playerId, url) => ipcRenderer.invoke('oskol:openInPlayer', playerId, url),
+  download: (url, filename, destDir) => ipcRenderer.invoke('oskol:download', url, filename, destDir),
+  cancelDownload: (id) => ipcRenderer.invoke('oskol:cancelDownload', id),
+  onDownloadProgress: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: DownloadProgress) => cb(p)
+    ipcRenderer.on('oskol:download-progress', listener)
+    return () => ipcRenderer.removeListener('oskol:download-progress', listener)
   },
   platform: boot.platform,
   appVersion: boot.appVersion

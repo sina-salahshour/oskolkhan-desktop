@@ -89,12 +89,16 @@ export function AppShell() {
 					collapsed ? 'w-16' : 'w-60'
 				}`}
 			>
-				<div className="flex h-14 items-center gap-2 px-4">
-					<div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-fg text-sm font-bold">
-						O
+				<div className="flex h-14 items-center gap-2.5 px-4">
+					{/* Branded play mark (matches the app icon): amber triangle in a ring. */}
+					<div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 ring-1 ring-line">
+						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+							<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.3" className="text-accent opacity-40" />
+							<path d="M10 8.2 L10 15.8 L16 12 Z" className="fill-accent" />
+						</svg>
 					</div>
 					{!collapsed && (
-						<span className="truncate text-sm font-semibold tracking-tight">{t('app.name')}</span>
+						<span className="truncate text-[15px] font-bold tracking-tight">{t('app.name')}</span>
 					)}
 				</div>
 

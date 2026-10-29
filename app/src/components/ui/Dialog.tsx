@@ -66,7 +66,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
 								<RD.Close
 									aria-label={closeLabel}
 									className={cn(
-										'absolute end-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg',
+										'absolute end-3 top-3 inline-flex cursor-pointer h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg',
 										focusRing,
 									)}
 								>

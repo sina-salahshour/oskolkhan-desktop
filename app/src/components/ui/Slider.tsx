@@ -27,7 +27,7 @@ export const Slider = React.forwardRef<HTMLSpanElement, SliderProps>(function Sl
 			value={value}
 			defaultValue={initial}
 			className={cn(
-				'relative flex h-5 w-full touch-none select-none items-center data-[disabled]:opacity-50',
+				'relative flex h-5 w-full touch-none select-none items-center cursor-pointer data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
 				className,
 			)}
 			{...rest}
@@ -39,7 +39,7 @@ export const Slider = React.forwardRef<HTMLSpanElement, SliderProps>(function Sl
 				<RS.Thumb
 					key={i}
 					className={cn(
-						'block rounded-full border-2 border-accent bg-bg shadow transition-transform duration-150 hover:scale-110 active:scale-95',
+						'block cursor-grab active:cursor-grabbing rounded-full border-2 border-accent bg-bg shadow transition-transform duration-150 hover:scale-110 active:scale-95',
 						focusRing,
 						thumbs[size],
 					)}

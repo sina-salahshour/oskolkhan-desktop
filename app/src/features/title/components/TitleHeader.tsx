@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { Download, ExternalLink, Heart, Play, Share2, Star } from '@lucide/react';
-import { Badge, Button, IconButton } from '../../../components/ui';
+import { Heart, Star } from '@lucide/react';
+import { Badge, IconButton } from '../../../components/ui';
 import { useI18n } from '../../../i18n';
 import { backdrop, placeholderColor, poster } from '../../../lib/util/images';
 import type { GenericTitle, ItemDetail, PreLoad } from '../../../lib/api/types';
@@ -13,11 +13,7 @@ export interface TitleHeaderProps {
 	pre: PreLoad | undefined;
 	assetBase: string;
 	liked: boolean;
-	onPlay: () => void;
-	onDownload: () => void;
 	onToggleLike: () => void;
-	onShare: () => void;
-	onOpenExternal: () => void;
 }
 
 export function TitleHeader(p: TitleHeaderProps) {
@@ -87,12 +83,6 @@ export function TitleHeader(p: TitleHeaderProps) {
 						</div>
 					) : null}
 					<div className="mt-1 flex flex-wrap items-center gap-2">
-						<Button variant="solid" size="lg" leftIcon={Play} onClick={p.onPlay}>
-							{t('common.play')}
-						</Button>
-						<Button variant="outline" size="lg" leftIcon={Download} onClick={p.onDownload}>
-							{t('common.download')}
-						</Button>
 						<motion.span
 							key={p.liked ? 'on' : 'off'}
 							className="inline-flex"
@@ -106,18 +96,14 @@ export function TitleHeader(p: TitleHeaderProps) {
 								variant="outline"
 								size="lg"
 								aria-pressed={p.liked}
-								className={p.liked ? 'text-danger' : undefined}
+								className={
+									p.liked
+										? 'border-danger bg-danger/15 text-danger [&_svg]:fill-current'
+										: undefined
+								}
 								onClick={p.onToggleLike}
 							/>
 						</motion.span>
-						<IconButton icon={Share2} label={t('common.share')} variant="outline" size="lg" onClick={p.onShare} />
-						<IconButton
-							icon={ExternalLink}
-							label={t('common.openExternal')}
-							variant="outline"
-							size="lg"
-							onClick={p.onOpenExternal}
-						/>
 					</div>
 				</div>
 			</div>

@@ -47,7 +47,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
 			title={label}
 			className={cn(
 				'inline-flex shrink-0 items-center justify-center transition-colors duration-150',
-				'disabled:pointer-events-none disabled:opacity-50',
+				'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
 				focusRing,
 				round ? 'rounded-full' : 'rounded-md',
 				variants[variant],

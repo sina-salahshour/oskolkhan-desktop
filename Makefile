@@ -30,15 +30,16 @@ INSTALLED_APPIMAGE := $(LIBDIR)/OskolKhan.AppImage
 INSTALLED_ICON     := $(LIBDIR)/oskolkhan.png
 DESKTOP_FILE       := $(DESKTOP_DIR)/oskolkhan.desktop
 
-.PHONY: all help deps core stage build appimage install uninstall clean
+.PHONY: all help deps core stage build appimage install uninstall clean pkg
 
 all: appimage
 
 help:
-	@echo "Targets: core stage build appimage install uninstall clean"
+	@echo "Targets: core stage build appimage install pkg uninstall clean"
 	@echo "  make appimage   # release sidecar + staged + electron-builder AppImage"
 	@echo "  make install    # + copy into $(LIBDIR) and write $(DESKTOP_FILE)"
-	@echo "Vars: PREFIX=$(PREFIX)  LIBDIR=$(LIBDIR)  DESKTOP_DIR=$(DESKTOP_DIR)"
+	@echo "  make pkg        # build + install an Arch package (PKGBUILD, pacman-tracked)"
+	@echo "Vars: PREFIX=$(PREFIX)  LIBDIR=$(LIBDIR)  DESKTOP_DIR=$(DESKTOP_DIR)  BIND_IFACE=$(BIND_IFACE)"
 
 deps:
 	$(PNPM) --dir $(APP) install
@@ -89,6 +90,15 @@ uninstall:
 	-update-desktop-database "$(DESKTOP_DIR)" 2>/dev/null || true
 	@echo "Uninstalled."
 
+# Build + install an Arch package via the repo PKGBUILD (pacman-tracked install,
+# uninstall with `pacman -R oskolkhan`). Bind interface: make pkg BIND_IFACE=eth0
+# `-d` skips makepkg's dependency check: the toolchain here is rustup (cargo/rustc)
+# and corepack (pnpm), which aren't pacman packages, so the check would wrongly
+# fail. The tools listed in PKGBUILD's makedepends must still be on PATH.
+pkg:
+	BIND_IFACE=$(BIND_IFACE) makepkg -d -i -f
+
 clean:
 	rm -rf $(APP)/out $(APP)/dist
 	rm -f $(STAGED_BIN)
+	rm -rf pkg src *.pkg.tar.*

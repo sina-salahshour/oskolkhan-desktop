@@ -26,7 +26,7 @@ export const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerPr
 			aria-invalid={invalid || undefined}
 			className={cn(
 				'inline-flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-surface-2 px-3 text-start text-sm text-fg',
-				'transition-colors duration-150 data-[placeholder]:text-subtle disabled:cursor-not-allowed disabled:opacity-50',
+				'cursor-pointer transition-colors duration-150 data-[placeholder]:text-subtle disabled:cursor-not-allowed disabled:opacity-50',
 				invalid ? 'border-danger' : 'border-line hover:border-line-strong',
 				focusRing,
 				className,
@@ -81,8 +81,8 @@ export const SelectItem = React.forwardRef<HTMLDivElement, SelectItemProps>(func
 		<RS.Item
 			ref={ref}
 			className={cn(
-				'relative flex cursor-default select-none items-center rounded-md py-1.5 pe-8 ps-2 text-sm text-fg outline-none transition-colors',
-				'data-[highlighted]:bg-surface-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+				'relative flex cursor-pointer select-none items-center rounded-md py-1.5 pe-8 ps-2 text-sm text-fg outline-none transition-colors',
+				'data-[highlighted]:bg-surface-2 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
 				className,
 			)}
 			{...rest}

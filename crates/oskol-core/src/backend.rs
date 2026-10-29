@@ -43,16 +43,29 @@ pub struct BackendRequest {
     /// Path (and query) starting with `/`.
     pub path: String,
     pub form: Option<Vec<(String, String)>>,
+    /// Raw request body as (content-type, bytes) — e.g. a protobuf payload.
+    pub body: Option<(String, Vec<u8>)>,
     pub headers: Vec<(String, String)>,
     pub timeout: Option<Duration>,
 }
 
 impl BackendRequest {
     pub fn get(path: impl Into<String>) -> Self {
-        Self { method: Method::GET, path: path.into(), form: None, headers: Vec::new(), timeout: None }
+        Self { method: Method::GET, path: path.into(), form: None, body: None, headers: Vec::new(), timeout: None }
     }
     pub fn post(path: impl Into<String>, form: Vec<(String, String)>) -> Self {
-        Self { method: Method::POST, path: path.into(), form: Some(form), headers: Vec::new(), timeout: None }
+        Self { method: Method::POST, path: path.into(), form: Some(form), body: None, headers: Vec::new(), timeout: None }
+    }
+    /// POST with a raw body (content-type + bytes) instead of a form.
+    pub fn post_body(path: impl Into<String>, content_type: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self {
+            method: Method::POST,
+            path: path.into(),
+            form: None,
+            body: Some((content_type.into(), bytes)),
+            headers: Vec::new(),
+            timeout: None,
+        }
     }
     pub fn header(mut self, k: impl Into<String>, v: impl Into<String>) -> Self {
         self.headers.push((k.into(), v.into()));
@@ -136,6 +149,9 @@ impl Backend {
         let mut rb = client.request(req.method.clone(), &url);
         if let Some(form) = &req.form {
             rb = rb.form(form);
+        }
+        if let Some((ct, bytes)) = &req.body {
+            rb = rb.header("content-type", ct.as_str()).body(bytes.clone());
         }
         for (k, v) in &req.headers {
             rb = rb.header(k.as_str(), v.as_str());

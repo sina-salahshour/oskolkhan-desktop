@@ -9,9 +9,11 @@ import { ctlBtn, menuRow, menuRowGhost, menuRowOn } from './ctl';
 export interface AudioMenuProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Switch audio track (reloads the stream with that track). */
+	onSelect: (id: string) => void;
 }
 
-export function AudioMenu({ open, onOpenChange }: AudioMenuProps) {
+export function AudioMenu({ open, onOpenChange, onSelect }: AudioMenuProps) {
 	const { t, lang } = useI18n();
 	const tracks = usePlayerChrome((s) => s.audioTracks);
 	const trackId = usePlayerChrome((s) => s.audioTrackId);
@@ -33,7 +35,7 @@ export function AudioMenu({ open, onOpenChange }: AudioMenuProps) {
 						key={a.id}
 						type="button"
 						className={cn(menuRow, trackId === a.id && menuRowOn)}
-						onClick={() => patch({ audioTrackId: a.id })}
+						onClick={() => onSelect(a.id)}
 					>
 						<span>{a.label}</span>
 						{trackId === a.id ? <Icon icon={Check} size={16} /> : null}

@@ -58,7 +58,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
 	const isDisabled = Boolean(disabled) || loading;
 	const classes = cn(
 		'inline-flex select-none items-center justify-center whitespace-nowrap font-medium transition-colors duration-150',
-		'disabled:pointer-events-none disabled:opacity-50',
+		'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
 		focusRing,
 		variants[variant],
 		sizes[size],

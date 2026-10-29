@@ -1,13 +1,13 @@
 /**
  * Downloads screen: queue (multi-select bar), download groups, and the offline
- * library. Progress is driven by the mock engine (useDownloadsEngine); the real
- * transfer engine arrives later. Default export = DownloadsScreen (router wires
- * it to /downloads, replacing DownloadsStub).
+ * library. Progress/state come from the real downloads store (Electron-main
+ * transfers via window.oskol.download). Default export = DownloadsScreen (router
+ * wires it to /downloads, replacing DownloadsStub).
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence } from 'motion/react';
-import { Download, Film, FolderPlus, Pause, Play, Trash2, CheckSquare, Plus } from '@lucide/react';
+import { Download, Film, FolderPlus, X, Trash2, CheckSquare, Plus } from '@lucide/react';
 import {
 	Button,
 	SegmentedControl,
@@ -22,7 +22,6 @@ import {
 import { useDownloadsStore } from '@/lib/stores/downloads';
 import { useI18n } from '@/i18n';
 import { toFaDigits } from '@/lib/util/format';
-import { useDownloadsEngine } from './useDownloadsEngine';
 import { useGroupsStore } from './groupsStore';
 import { QueueRow } from './QueueRow';
 import { GroupCard } from './GroupCard';
@@ -33,14 +32,12 @@ type Tab = 'queue' | 'library' | 'groups';
 export default function DownloadsScreen() {
 	const { t, lang } = useI18n();
 	const navigate = useNavigate();
-	useDownloadsEngine();
 
 	const items = useDownloadsStore((s) => s.items);
 	const selected = useDownloadsStore((s) => s.selected);
-	const setStatus = useDownloadsStore((s) => s.setStatus);
+	const cancel = useDownloadsStore((s) => s.cancel);
+	const cancelAll = useDownloadsStore((s) => s.cancelAll);
 	const remove = useDownloadsStore((s) => s.remove);
-	const pauseAll = useDownloadsStore((s) => s.pauseAll);
-	const resumeAll = useDownloadsStore((s) => s.resumeAll);
 	const clearSelection = useDownloadsStore((s) => s.clearSelection);
 
 	const groups = useGroupsStore((s) => s.groups);
@@ -67,14 +64,8 @@ export default function DownloadsScreen() {
 		if (allSelected) clearSelection();
 		else useDownloadsStore.setState({ selected: new Set(queue.map((q) => q.id)) });
 	}
-	function startSelected() {
-		selectedQueueIds.forEach((id) => {
-			const it = items.find((x) => x.id === id);
-			if (it && it.status !== 'downloading') setStatus(id, 'downloading');
-		});
-	}
-	function stopSelected() {
-		selectedQueueIds.forEach((id) => setStatus(id, 'paused'));
+	function cancelSelected() {
+		selectedQueueIds.forEach((id) => cancel(id));
 	}
 	function confirmDelete() {
 		remove(selectedQueueIds);
@@ -101,11 +92,14 @@ export default function DownloadsScreen() {
 			{tab === 'queue' ? (
 				<>
 					<div className="flex flex-wrap items-center gap-2">
-						<Button variant="subtle" size="sm" leftIcon={Pause} onClick={pauseAll}>
+						<Button
+							variant="subtle"
+							size="sm"
+							leftIcon={X}
+							onClick={cancelAll}
+							disabled={!queue.some((q) => q.status === 'downloading' || q.status === 'queued')}
+						>
 							{t('downloads.pauseAll')}
-						</Button>
-						<Button variant="subtle" size="sm" leftIcon={Play} onClick={resumeAll}>
-							{t('downloads.resumeAll')}
 						</Button>
 						<span className="flex-1" />
 						{selecting ? (
@@ -116,20 +110,11 @@ export default function DownloadsScreen() {
 								<Button
 									variant="ghost"
 									size="sm"
-									leftIcon={Play}
+									leftIcon={X}
 									disabled={selectedQueueIds.length === 0}
-									onClick={startSelected}
+									onClick={cancelSelected}
 								>
-									{t('downloads.resume')}
-								</Button>
-								<Button
-									variant="ghost"
-									size="sm"
-									leftIcon={Pause}
-									disabled={selectedQueueIds.length === 0}
-									onClick={stopSelected}
-								>
-									{t('downloads.pause')}
+									{t('common.cancel')}
 								</Button>
 								<Button
 									variant="danger"

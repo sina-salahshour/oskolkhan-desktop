@@ -6,7 +6,6 @@ import {
 	Maximize,
 	Minimize,
 	Pause,
-	PictureInPicture2,
 	Play,
 	Rewind,
 	SkipForward,
@@ -46,7 +45,6 @@ export function ControlBar({ controller, onToggleFullscreen, onMenuOpenChange }:
 	const status = usePlayerChrome((s) => s.status);
 	const buffered = usePlayerChrome((s) => s.buffered);
 	const lock = usePlayerChrome((s) => s.lock);
-	const pip = usePlayerChrome((s) => s.pip);
 	const hasNext = usePlayerChrome((s) => s.index < s.playlist.length - 1);
 
 	const [speedOpen, setSpeedOpen] = useState(false);
@@ -142,24 +140,12 @@ export function ControlBar({ controller, onToggleFullscreen, onMenuOpenChange }:
 						</div>
 						<div className="flex items-center gap-1">
 							<SpeedMenu open={speedOpen} onOpenChange={setSpeedOpen} onSelect={controller.setRate} />
-							<AudioMenu open={audioOpen} onOpenChange={setAudioOpen} />
+							<AudioMenu open={audioOpen} onOpenChange={setAudioOpen} onSelect={controller.setAudioTrack} />
 							<SubtitleMenu open={subsOpen} onOpenChange={setSubsOpen} />
 							{tip(
 								'Lock',
 								<button type="button" className={ctlBtn} aria-label="Lock" onClick={controller.toggleLock}>
 									<Icon icon={LockOpen} size={19} />
-								</button>,
-							)}
-							{tip(
-								t('player.pip'),
-								<button
-									type="button"
-									className={cn(ctlBtn, pip && 'bg-white/15 text-accent')}
-									aria-label={t('player.pip')}
-									aria-pressed={pip}
-									onClick={controller.togglePip}
-								>
-									<Icon icon={PictureInPicture2} size={19} />
 								</button>,
 							)}
 							{tip(

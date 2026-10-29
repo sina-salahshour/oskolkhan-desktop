@@ -108,7 +108,7 @@ export function TitleCard({
 				aria-pressed={selected}
 				aria-label={name}
 				onClick={() => onToggle?.(title.id)}
-				className="rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+				className="cursor-pointer rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
 			>
 				{inner}
 			</button>
