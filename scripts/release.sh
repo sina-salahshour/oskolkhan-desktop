@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# release.sh — bump the version everywhere, build the Arch package, then push the
-# commit + tag to GitHub and cut a release (with the .pkg.tar.zst attached).
+# release.sh — bump the version everywhere, build the release artifacts (Arch
+# .pkg.tar.zst + portable .AppImage), then push the commit + tag to GitHub and
+# cut a release with both attached.
 #
 # Usage:
 #   scripts/release.sh <major|minor|patch|X.Y.Z> [options]
@@ -117,10 +118,11 @@ check=$(printf '%s\n' \
 	"$(sed -nE 's/^pkgver=(.*)/\1/p' PKGBUILD)" | sort -u)
 [ "$check" = "$NEWV" ] || { git checkout -- . ; die "version files disagree after bump: [$check]"; }
 
-# --- build the package (optional) ------------------------------------------
-ASSET=""
+# --- build the artifacts (optional) ----------------------------------------
+# Two release assets: the Arch .pkg.tar.zst (pacman) and a portable .AppImage.
+ASSETS=()
 if [ "$DO_BUILD" -eq 1 ]; then
-	info "Building package (makepkg)…"
+	info "Building Arch package (makepkg)…"
 	# Clean stale build dirs first: a leftover pkg/ (from an interrupted or
 	# concurrent run) makes makepkg abort with "Dotfile found in package root"
 	# because its own .BUILDINFO/.MTREE/.PKGINFO are already there.
@@ -130,9 +132,21 @@ if [ "$DO_BUILD" -eq 1 ]; then
 		git checkout -- .
 		die "makepkg failed — version bump reverted"
 	fi
-	ASSET=$(ls -1t oskolkhan-"$NEWV"-*.pkg.tar.zst 2>/dev/null | head -1 || true)
-	[ -n "$ASSET" ] || { git checkout -- . ; die "package built but artifact not found"; }
-	info "Built $ASSET"
+	pkg=$(ls -1t oskolkhan-"$NEWV"-*.pkg.tar.zst 2>/dev/null | head -1 || true)
+	[ -n "$pkg" ] || { git checkout -- . ; die "package built but artifact not found"; }
+	ASSETS+=("$pkg")
+	info "Built $pkg"
+
+	info "Building AppImage (electron-builder)…"
+	rm -f app/dist/*.AppImage 2>/dev/null || true
+	if ! BIND_IFACE="${BIND_IFACE:-wlan0}" make appimage; then
+		git checkout -- .
+		die "AppImage build failed — version bump reverted"
+	fi
+	appimage=$(ls -1t app/dist/*.AppImage 2>/dev/null | head -1 || true)
+	[ -n "$appimage" ] || { git checkout -- . ; die "AppImage built but artifact not found"; }
+	ASSETS+=("$appimage")
+	info "Built $appimage"
 fi
 
 # --- commit, tag, push -----------------------------------------------------
@@ -151,6 +165,6 @@ gh release create "$TAG" \
 	--title "$TAG" \
 	$DRAFT $PRERELEASE \
 	"${notes_arg[@]}" \
-	${ASSET:+"$ASSET"}
+	${ASSETS+"${ASSETS[@]}"}
 
 info "Done: $(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$TAG")"
