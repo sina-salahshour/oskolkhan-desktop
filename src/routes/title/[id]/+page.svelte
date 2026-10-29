@@ -98,6 +98,16 @@
 		downloads.addFromTitle(id, title?.Q || 'HD', file.Title[0] ?? file.description ?? '');
 	}
 
+	async function copyLink(file: FileV2) {
+		try {
+			const { url } = await api.playUrl({ urn: file.urn, id: file.id });
+			await navigator.clipboard?.writeText(url);
+			toast.success(t('item.linkCopied'), url);
+		} catch (e) {
+			toast.info(t('item.linkFailed'), e instanceof Error ? e.message : String(e));
+		}
+	}
+
 	async function toggleLike() {
 		if (!title) return;
 		liked = !liked;
@@ -228,7 +238,12 @@
 					<section>
 						<h2 class="section-title">{t('title.files')}</h2>
 						<div class="tree">
-							<FileTree node={files.Items} onplay={playFile} ondownload={download} />
+							<FileTree
+								node={files.Items}
+								onplay={playFile}
+								ondownload={download}
+								oncopylink={copyLink}
+							/>
 						</div>
 					</section>
 				{/if}

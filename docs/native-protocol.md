@@ -569,3 +569,94 @@ curl -k --resolve api.gamezula.sbs:443:185.229.134.55 \
 
 ### Bootstrap note
 Old `.bin`/`.okx` starter files decode (SuperLoaderBytes = zstd(XOR 0x33)) to a full `interfacess`; their group-99999999 hosts rotate, but the scheme is identical. A client can either ship a recent starter or just fetch `/init/Peak` from any currently-live group-99999999 host to self-update.
+
+---
+
+## 12. External-link URL builder (play / download) — VERIFIED(decompile) 2026-10-29
+
+Reverse of `sources/p000/ge.java` case 4 (ItemActivity "open in external player" /
+"copy link"), the native `Interfaces.spike`, and the Java helpers. Implemented in
+`crates/oskol-core/src/media.rs`; op `playUrl` in `api.rs`. This **upgrades §5** —
+`spike` is XOR **plus a custom base-62 encoding**, not plain XOR→string.
+
+### URL shape (matches the user's real sample)
+```
+http://<rand60>.<rand40>.<saltDomain>:<port>/<spikeA>/<spikeB>[/<fileIdEnc>-<filename>]
+```
+Sample:
+```
+http://y59e8y37…qnojv.msm2kd…mrnv5.d4k4pp4hei8et7qi73n09h3vgfc.fun:1221/
+  E4ivanttEXW4…kKe3 / p19Yj68…PKfnV / 6p6N-The.Salesman.2016.720p.BluRay.x264.YTS.DigiMoviez.mp4
+```
+
+### Pieces (all VERIFIED from decompile unless noted)
+- **saltDomain** = `PreLoad.Salt` bytes **XOR 0x45** (`nf2.m53478l(salt,69)`).
+  Confirmed against the live `re-native/preload.zst`: field 17 (`bytes Salt`, len 31)
+  = `d4k4pp4hei8et7qi73n09h3vgfc.fun` XOR 0x45. **Deterministic — reproducible.**
+- **host** = `join(chunks(60, rand100), ".") + "." + saltDomain`, where `rand100` =
+  100 chars from `[a-z0-9]` (`nf2.m53473g`, pool = a..z then 0..9). The two leading
+  labels are **random per request** (noise; also seed the spike key). Not reproducible
+  and not meant to be — the proxy reads them back from the URL authority.
+- **port** = `r96.f80991g` — the port the native local proxy bound at `init`
+  (default 1000; the sample's device bound **1221**). It is the port whatever proxy
+  serves these links must listen on. In core it is a parameter (`DEFAULT_PORT = 1221`,
+  overridable via the `port` op arg).
+- **spikeA** = `spike("/" + clean(urn), host)`; `clean` = `nf2.m53477k` =
+  OkHttp-normalize path(+`?`query) of `http://1.2.3.4/<urn>`, strip one leading `/`.
+- **spikeB** = `spike("PalangOskol" + rand(200) + "PalangOskol", host)` — the
+  `PalangOskol` local-proxy credential (§4), spike-wrapped. Random per request.
+- **trailing segment** (only when the urn's last path segment has a non-empty
+  extension): `/<g41.m46609b(FileV2.id)>-<clean(lastSegment) before '?'>`.
+- concat is `p51.m54905l(spikeA, "/", iz(...), spikeB)` = `iz + spikeA + "/" + spikeB`
+  where `iz.m51157p(port,"http://",host,":","/")` = `"http://"+host+":"+port+"/"`.
+  (The §5 guess "`path + "/" + http://… + "/" + pad`" was **wrong**; the real order
+  is `http://host:port/ + spikeA + / + spikeB`, as the sample shows.)
+
+### `spike(t1, t2)` — VERIFIED (`FUN_004ba97c`, charset `_INIT_22` @ `0x4bc0cc`)
+```
+spike(t1, t2):
+    x = bytes(t1[i] ^ t2[i % len(t2)])              # repeating-key XOR, key = t2
+    n = int.from_bytes(x, 'big')                    # x as big-endian base-256 int
+    out = ""                                        # base-62 digits, LSD FIRST (no reverse)
+    while n > 0: out += ALPHABET[n % 62]; n //= 62
+    return out                                      # memoised in two global std::maps
+```
+- `ALPHABET` (62, custom) = `YHDWmMCJcvwEA5oxtjIB3UbK1lP6QqupTXnd8Fi7Rkrs2G0aNe4gVhOfyz9LZS`
+  — read verbatim from the `std::string` built in `_INIT_22` (`DAT_00dca950`, size 0x3e).
+- The native encoder is an in-place long division (process bytes MSB→LSB, carry),
+  dropping leading-zero quotient digits — identical to the bignum form above. A reverse
+  lookup table (`memset(&DAT_00dcaa88,0xff,0x400)` + fill) exists for the inverse
+  (the proxy de-obfuscating the request).
+- Confidence **HIGH** on algorithm + alphabet (full decompile + self-consistent
+  round-trip in `media.rs` tests). The one residual with **no device oracle** is the
+  digit endianness (LSD-first); implemented exactly as decompiled.
+
+### `g41.m46609b(id)` — VERIFIED (file-id encoder)
+Bespoke **base-64** (MSB-first, `sb.reverse()`), alphabet `g41.f59073a` =
+`5EA6FLYQdNOKT2bMXeolv1k.IzRPw3s_a9DVqhgW0rU7cGumZJxi4C8nSypBfjHt` (incl. `.` and `_`).
+`id==0` → first char. This is NOT standard base64.
+
+### Worked example (fixed, reproducible)
+```
+spike("AB", "xy")  = "B4W"       # 0x41^0x78,0x42^0x79 = 0x393b -> base62 LSD-first
+spike("/the.salesman.2016.mp4", "abc.def.d4k4pp4hei8et7qi73n09h3vgfc.fun")
+                   = "ptFykGlIbMeqyd1TdfV9AlfzQRmLWW"
+salt_domain(XOR(0x45) of the .fun domain) == "d4k4pp4hei8et7qi73n09h3vgfc.fun"
+```
+
+### op contract (`api(playUrl, …)`)
+```
+args:   { urn: string, vurn?: string, download?: bool, id?: int, port?: int }
+return: { url: string, filename: string }
+```
+`vurn`/`download` are accepted but do not alter the URL (downloads do HTTP Range GETs
+on the *same* URL — §6 — and `vurn` addresses thumbnails, not the stream). `filename`
+= last path segment before `?`, percent-decoded. Salt is taken from the live
+`Core::preload_cached()`.
+
+### What the user can do to confirm
+Call `api("playUrl", {"urn": "<a real FileV2.urn>", "id": <FileV2.id>})`, copy `url`,
+and open it in **mpv**/**VLC** — provided a proxy that reverses `spike` is listening on
+`<port>` and the `.fun` host resolves to it (on Android that is the in-app NDK proxy;
+the deterministic parts — saltDomain, port, structure — match the sample, but the
+random host labels differ every call by design).

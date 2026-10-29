@@ -26,7 +26,7 @@
 	// debounce typing into `phrase`
 	$effect(() => {
 		const q = query.trim();
-		const id = setTimeout(() => (phrase = q), 250);
+		const id = setTimeout(() => (phrase = q), 300);
 		return () => clearTimeout(id);
 	});
 

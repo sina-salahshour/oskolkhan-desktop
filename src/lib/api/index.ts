@@ -1,14 +1,17 @@
 /**
  * API entrypoint. Picks the real Tauri client or the mock implementation.
  *
- * Mock is used when:
- *  - the build flag VITE_MOCK=1 is set, or
- *  - the app is not running inside a Tauri webview (e.g. `vite dev` in a
- *    normal browser, or the static mock build opened directly).
+ * Selection order:
+ *  - VITE_MOCK forces the choice: '1'/'true' -> mock, '0'/'false' -> real (Tauri).
+ *  - running inside a Tauri webview -> the real Tauri client.
+ *  - VITE_BROWSER=1 (browser mode: `pnpm browser`) -> the HTTP client, which
+ *    talks to the live core over `…/<token>/rpc` (see http.ts / serve.rs).
+ *  - otherwise the mock (e.g. `vite dev` in a plain browser).
  */
 import type { OskolApi } from './api';
 import { mockClient } from './mock';
 import { tauriClient } from './client';
+import { httpClient } from './http';
 
 function hasTauri(): boolean {
 	if (typeof window === 'undefined') return false;
@@ -21,7 +24,9 @@ function selectApi(): OskolApi {
 	const forced = import.meta.env.VITE_MOCK;
 	if (forced === '1' || forced === 'true') return mockClient;
 	if (forced === '0' || forced === 'false') return tauriClient;
-	return hasTauri() ? tauriClient : mockClient;
+	if (hasTauri()) return tauriClient;
+	if (import.meta.env.VITE_BROWSER === '1') return httpClient;
+	return mockClient;
 }
 
 export const api: OskolApi = selectApi();

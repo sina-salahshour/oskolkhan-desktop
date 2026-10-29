@@ -101,6 +101,9 @@ export const tauriClient: OskolApi = {
 	srt(path) {
 		return api<string>('srt', { path });
 	},
+	playUrl(args) {
+		return api<{ url: string; filename: string }>('playUrl', args);
+	},
 	trailer(lsi, urn) {
 		return api<string>('trailer', { lsi, urn });
 	},

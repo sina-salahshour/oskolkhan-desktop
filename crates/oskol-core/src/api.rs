@@ -212,6 +212,31 @@ impl Core {
                 let o: OAuth = b.proto(req).await?;
                 self.accept_oauth_update(o)?
             }
+            "playUrl" => {
+                // Build the external play/download URL (mpv/VLC "copy link") the
+                // Android app produces. `vurn`/`download` are accepted for contract
+                // stability but do not change the URL: downloads use HTTP Range on
+                // the same URL, and `vurn` addresses thumbnails, not the stream.
+                let urn = a.str("urn")?;
+                let _vurn = a.opt_str("vurn");
+                let _download = a.opt_i64("download")?.map(|n| n != 0).unwrap_or(false);
+                let port = a.opt_i64("port")?.map(|p| p as u16).unwrap_or(crate::media::DEFAULT_PORT);
+                let file_id = a.opt_i64("id")?.unwrap_or(0);
+                let preload = self
+                    .preload_cached()
+                    .ok_or_else(|| CoreError::unimplemented("preload not loaded yet"))?;
+                if preload.salt.is_empty() {
+                    return Err(CoreError::decode("PreLoad.Salt is empty".to_string()));
+                }
+                let url = crate::media::build_play_url(
+                    &preload.salt,
+                    &crate::media::PlayUrlParams { urn: &urn, file_id, port },
+                );
+                let mut obj = Map::new();
+                obj.insert("url".into(), Value::String(url));
+                obj.insert("filename".into(), Value::String(crate::media::urn_filename(&urn)));
+                Value::Object(obj)
+            }
             other => return Err(CoreError::unimplemented(format!("unknown op `{other}`"))),
         };
         Ok(v)

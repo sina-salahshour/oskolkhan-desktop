@@ -192,6 +192,11 @@ export const mockClient: OskolApi = {
 			'1\n00:00:01,000 --> 00:00:04,000\nنمونه زیرنویس فارسی\n\n2\n00:00:05,000 --> 00:00:08,000\nخط دوم زیرنویس',
 			200
 		),
+	playUrl: (args) =>
+		delay({
+			url: `http://mock.local:1221/stream/${args.urn || 'file'}.mp4`,
+			filename: `${(args.urn || 'file').split('/').pop()}.mp4`
+		}),
 	trailer: () => delay('mock://trailer.mp4'),
 	adProfile: () => delay(makeAdProfile()),
 	getContentTypes: () => delay(makeCtype()),

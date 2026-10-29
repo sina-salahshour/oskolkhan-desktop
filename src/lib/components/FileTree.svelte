@@ -14,8 +14,9 @@
 		level?: number;
 		onplay: (file: FileV2, playlist: FileV2[], index: number) => void;
 		ondownload: (file: FileV2) => void;
+		oncopylink: (file: FileV2) => void;
 	}
-	let { node, level = 0, onplay, ondownload }: Props = $props();
+	let { node, level = 0, onplay, ondownload, oncopylink }: Props = $props();
 
 	// `level` is constant per node instance; capture the initial open state once.
 	let open = $state(untrack(() => level < 1));
@@ -47,7 +48,7 @@
 		<div class="children">
 			{#if hasChildren}
 				{#each node.Child as child (child.id)}
-					<Self node={child} level={level + 1} {onplay} {ondownload} />
+					<Self node={child} level={level + 1} {onplay} {ondownload} {oncopylink} />
 				{/each}
 			{/if}
 			{#if hasFiles}
@@ -73,6 +74,13 @@
 									variant="surface"
 									label={t('common.play')}
 									onclick={() => onplay(file, node.Files, i)}
+								/>
+								<IconButton
+									icon="external"
+									size="sm"
+									variant="ghost"
+									label={t('item.copyLink')}
+									onclick={() => oncopylink(file)}
 								/>
 								{#if file.Download}
 									<IconButton

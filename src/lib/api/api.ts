@@ -82,6 +82,13 @@ export interface OskolApi {
 	subtitles(args: SubtitleArgs): Promise<SubTitleParent>;
 	srt(path: string): Promise<string>;
 	trailer(lsi: string, urn: string): Promise<string>;
+	/** Build the real external stream/download URL for a file (for copy-to-clipboard → mpv/VLC). */
+	playUrl(args: {
+		urn: string;
+		id?: number;
+		vurn?: string;
+		download?: boolean;
+	}): Promise<{ url: string; filename: string }>;
 	adProfile(): Promise<adProfile>;
 	getContentTypes(): Promise<Ctype>;
 	setContentTypes(value: number): Promise<Session>;

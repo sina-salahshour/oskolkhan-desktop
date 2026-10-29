@@ -8,6 +8,7 @@ pub mod error;
 pub mod identity;
 pub mod json;
 pub mod kickstart;
+pub mod media;
 pub mod net;
 pub mod protocol;
 pub mod proto;
