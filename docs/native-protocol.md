@@ -544,6 +544,23 @@ core worker should bootstrap a **fresh** `Peak` (§10.6, unpinned) and re-run `b
 - Evidence: on `api.gamezula.sbs@185.229.134.55` and `edge05.556512.ir.cdn.ir@193.151.157.135`,
   `/Ca8d5/*` → 404 but `/Test/Hi` → 200 `"true"`, `/init/PreLoad` → 200 zstd, `/data/home/0` → 200 zstd.
 
+### getMore / "see all" pagination (VERIFIED LIVE 2026-10-29)
+- Request: **POST** `/Ca8d5/data/getmore/{endpoint}/{page}`, form body `_plh=834729` (GET → `405 Allow: POST`;
+  swapping to `/{page}/{endpoint}` → `400`). `{endpoint}` is the home section's `moreendpoint`
+  (`featured`, `latestseries`, `latestmovies`, …) or `filter` for the کاوش advanced filter.
+- **Page indexing differs by endpoint**: home-section endpoints are **1-indexed** — `page 0` is the
+  data already returned inline in `/data/home/{page}`, so `getmore/<section>/0` → `404`; the first
+  getmore page is `1` (`featured/1` → 200, 40 items, `hasmove=true`). `filter` is **0-indexed**
+  (`filter/0` → 200). The client starts each infinite query at its first valid page accordingly.
+- `filter` with no criteria returns an empty list (len 2). The advanced filter (`AdvanceFiler`)
+  payload wire-format for `filter` is **not yet reversed** — TODO before کاوش faceting works.
+
+### Failover note (core robustness, not protocol)
+- API `send()` must only fail over among **API-group rows (99999999/99999998) + CF fallbacks**, never
+  media/other-group rows (they 404 every API path), and must latch the sticky `active` row **only on a
+  2xx**. Otherwise one wrong-path request (e.g. a bad getMore) fails over onto a row that 404s
+  everything and pins it there, poisoning all later calls (home/search/files). Fixed in `backend.rs`.
+
 ### Transport (VERIFIED LIVE)
 - Connect route IP : 443, HTTPS. **SNI = Host = the route row's hostname** (same endpoint row's IP+host+pin; no decoy SNI — matches §10).
 - Headers: `User-Agent: <mobile/Poco UA>`, `Accept-Encoding: deflate, gzip, br, zstd`, `Accept: */*`. No other headers, no signing, no token upstream.
@@ -660,3 +677,103 @@ and open it in **mpv**/**VLC** — provided a proxy that reverses `spike` is lis
 `<port>` and the `.fun` host resolves to it (on Android that is the in-app NDK proxy;
 the deterministic parts — saltDomain, port, structure — match the sample, but the
 random host labels differ every call by design).
+
+### 12.1 Desktop in-app stream-proxy (`server.rs`) — SUPERSEDED by §13 (2026-10-29)
+> The first cut built the external `.fun` play URL (`media::build_play_url`, §12) and
+> fetched it. That URL is a **local-proxy** URL — its `.fun` host resolves to the loopback
+> marker `127.128.129.130` and is meant to be served by the app's **own** native proxy, not
+> a CDN — so fetching it 502s. The correct media fetch (what libexo's proxy actually does
+> with the in-app player's urn) is reversed and reimplemented in **§13**; `/stream` now uses
+> that. `build_play_url` is retained only for the external-player/copy-link op (`playUrl`).
+
+The asset server exposes a media endpoint the renderer's `<video>` points at, so the
+desktop plays in-app instead of handing the URL to an external player:
+```
+GET|HEAD  <assetBase>/stream?urn=<url-encoded urn>&id=<fileId>
+          assetBase = http://127.0.0.1:<port>/<token>   (from core_status)
+```
+Codec caveat: Chromium `<video>` only decodes H.264/AAC MP4; MKV/HEVC/x265 surface a
+"format not supported — open externally / copy link" state. libmpv is a later task.
+
+---
+
+## 13. In-app media stream fetch (urn → real CDN request) — VERIFIED(live) 2026-10-29
+
+How `libexo.so`'s native proxy turns an in-app player urn into a real media fetch, reversed
+and reimplemented in the Rust core's `/stream` handler. **LIVE-VERIFIED** from this PC over
+`wlan0` (pin-only TLS) and end-to-end through the core: a Range GET of the Matrix urn returns
+`206` + a real H.264 MP4 (`00 00 00 20 66 74 79 70 6d 70 34 32` = `…ftypmp42`).
+
+### 13.1 The two media URL paths are different (key correction to §12)
+- **External player / copy-link** (`ge.java` case 4, §12): a **spike**-obfuscated URL on the
+  `.fun` salt host, port `r96.f80991g` (1000/1221). The `.fun` host resolves to the loopback
+  marker `127.128.129.130` — it is served by the device's **own** native proxy, never a CDN.
+- **In-app player** (`NativePipeDataSource`): **no spike.** The player's `<video>` source is
+  `http://127.0.0.1:<proxyPort>/<urn>` (proxyPort = `r96.f80990f` via `m56063i`, default 8080).
+  `NativePipeDataSource.mo187d` strips the authority with
+  `ts7.m59401z(uri, r96.m56062h(), "")` where `m56062h() = "http://127.0.0.1:" + proxyPort`, so
+  native's `startNativeStream` receives the **raw `/<urn>`**. The proxy then does the fetch
+  below. **This is the path `/stream` reproduces.**
+
+### 13.2 Host selection — urn first segment = base-62 route-group ids (VERIFIED live)
+The urn's **first path segment** is a `.`-separated list of base-62 route-group ids. Each
+dot-part decodes through the **spike alphabet reverse table** (`DAT_00dcaa88`, §10.2/§12 — same
+table; `id = Σ tbl[ch]·62^k` reading the token **LSB-first from its END**, stopping at the
+first non-alphabet byte). For the Matrix urn:
+```
+WNJh.WNJV  ->  WNJh = 899983 , WNJV = 899982      (both live gamezula media groups)
+```
+These are `interfacex` group ids (`Interfaces.ItemGroup.id`), exactly like the API groups
+(99999999 …) but for media-CDN server groups. The remaining urn path is forwarded **unchanged**.
+
+### 13.3 The upstream request (VERIFIED live)
+```
+# urn = WNJh.WNJV/EasyTv-DgX/film/1399/05/The.Matrix.1999.REMASTERED.720p.BluRay.HardSub.EasyTV.mp4
+# -> group 899982 endpoint sx2.gamezula.sbs @ 185.229.134.51, pin Cpis[3]
+curl -k --interface wlan0 \
+  --resolve sx2.gamezula.sbs:443:185.229.134.51 \
+  --pinnedpubkey 'sha256//2jMTS3uy2CuN4K28sMVTf4JlDpL5LTGBpJtREj9htHY=' \
+  -H 'User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; 23113RKC6G Build/BP2A.250605.031)' \
+  -H 'Accept-Encoding: deflate, gzip, br, zstd' -H 'Accept: */*' \
+  -r 0-1048575 \
+  'https://sx2.gamezula.sbs/EasyTv-DgX/film/1399/05/The.Matrix.1999.REMASTERED.720p.BluRay.HardSub.EasyTV.mp4'
+# -> HTTP/2 206 ; content-type: video/mp4 ; content-range: bytes 0-1048575/1364804566 ; …ftypmp42
+```
+- **Connect IP** = endpoint `Endpoint.f2` (185.229.134.51). **SNI = Host = endpoint host**
+  `HsN[HostName]` (`sx2.gamezula.sbs`) — no decoy, same as the API transport (§10/§11).
+- **Path** = the urn with its first (route-selector) segment removed, forwarded **unchanged**
+  (`/EasyTv-DgX/film/1399/05/The.Matrix.1999.….mp4`). No selector strip beyond that, no signing,
+  no spike.
+- **Pin** = `Cpis[endpoint.cpi]` SHA-256(SPKI) (cpi 3 = the shared gamezula pin above);
+  pin-only TLS, no CA/hostname check. **Verified: the pin matches the live cert.**
+- **Headers**: mobile UA (§4) + `Accept`/`Accept-Encoding`; the incoming `Range` is passed
+  through. Response is uncompressed `video/mp4` with `Accept-Ranges`/`Content-Range`.
+- **Failover**: the urn lists ≥1 group, and a group has ≥1 endpoint; mirrors that lack the file
+  answer **502/404** (verified: `s2`/`s3 @ 185.229.134.55` → 502 for the same path) while
+  another endpoint of the same/other listed group serves it (`sx2` → 206). Try each endpoint of
+  each decoded group until a `2xx/206`.
+
+### 13.4 Confidence
+VERIFIED(live) — host selection (base-62 groups), path (selector-stripped, forwarded), SNI=Host,
+pin, UA, Range, and failover, all reproduced against the live Iran CDN over `wlan0` (and
+end-to-end through the core `/stream`, returning `206` + MP4 for the Matrix urn). The proxy
+handler `FUN_008e51b0` itself is in a Ghidra decomp gap, but the live oracle pins the algorithm.
+
+### 13.5 Core implementation (`server.rs` + `media.rs`)
+- `media::decode_route_id(token)` — spike-alphabet base-62 decode, LSB-first from the end.
+- `media::urn_route(urn)` → `(Vec<group_id>, upstream_path)` — split the first segment on `.`,
+  decode each to a group id; `path` = the rest with a leading `/`.
+- `server.rs::stream` — resolve those groups against `Backend::table()` (the live `interfacess`
+  routes already carry host/ip/pin/group per §2), then for each candidate endpoint fetch
+  `https://{host}{path}` with `Backend::client_for_route(route)` (pin-only TLS + `SNI=Host` +
+  `OSKOL_BIND_INTERFACE`/wlan0 egress, built in `backend::build_route_client`), mobile UA and the
+  passed-through `Range`. First `2xx/206/416/304` is streamed back (status + `Content-Type`/
+  `Content-Length`/`Content-Range`/`Accept-Ranges`/… , empty body for HEAD); all mirrors failing
+  → `502`; table not bootstrapped → `503`; bad token → `404`; missing `urn` → `400`.
+  `media::build_play_url` is no longer used by `/stream` (kept for the external `playUrl` op).
+
+Smoke it (sidecar bound to wlan0; hit 127.0.0.1 directly — the core binds wlan0 internally):
+```
+curl -i -r 0-1048575 'http://127.0.0.1:<assetPort>/<assetToken>/stream?urn=<url-encoded urn>&id=<id>'
+# -> 206 Partial Content, content-range: bytes 0-1048575/1364804566, body begins …ftypmp42
+```

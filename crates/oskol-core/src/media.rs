@@ -82,6 +82,58 @@ pub fn spike(t1: &[u8], t2: &[u8]) -> String {
     String::from_utf8(out).unwrap()
 }
 
+/// Inverse of [`SPIKE_ALPHABET`]: alphabet byte → base-62 digit (0..61), else `None`.
+/// This is the fill of the native reverse table `DAT_00dcaa88` used by the proxy's
+/// route-id decoder (native-protocol §10.2/§13).
+fn spike_digit(b: u8) -> Option<u32> {
+    SPIKE_ALPHABET.iter().position(|&c| c == b).map(|p| p as u32)
+}
+
+/// Decode one base-62 route-id token exactly as the native proxy handler does: read the
+/// token **LSB-first from its END**, through the spike-alphabet reverse table, stopping at
+/// the first non-alphabet byte (`id = Σ tbl[ch]·62^k`, native-protocol §10.2). Returns
+/// `None` when the token has no leading (from-the-end) alphabet byte.
+///
+/// VERIFIED(live 2026-10-29): the Matrix urn's first segment `WNJh.WNJV` decodes to the
+/// route groups `899983` (`WNJh`) and `899982` (`WNJV`), both live gamezula media groups.
+pub fn decode_route_id(token: &str) -> Option<i64> {
+    let mut v: i64 = 0;
+    let mut mult: i64 = 1;
+    let mut any = false;
+    for &b in token.as_bytes().iter().rev() {
+        match spike_digit(b) {
+            Some(d) => {
+                v = v.saturating_add(i64::from(d).saturating_mul(mult));
+                mult = mult.saturating_mul(62);
+                any = true;
+            }
+            None => break,
+        }
+    }
+    any.then_some(v)
+}
+
+/// Reverse the in-app player's media urn into (candidate route-group ids, upstream path).
+///
+/// The in-app player hands the native proxy `http://127.0.0.1:<proxyPort>/<urn>`
+/// (`NativePipeDataSource` strips the `r96.m56062h()` = `http://127.0.0.1:<port>` prefix),
+/// so native sees `/<urn>`. The urn's **first path segment** is a `.`-separated list of
+/// base-62 route-group ids (the media-CDN server groups that mirror the file); the native
+/// proxy selects an endpoint from one of those groups and forwards the **rest of the path
+/// unchanged** upstream. We reproduce that: decode every dot-part of the first segment into
+/// a group id, and return the remaining path (with a leading `/`).
+///
+/// VERIFIED(live): for `WNJh.WNJV/EasyTv-DgX/film/1399/05/The.Matrix.1999.…mp4` this yields
+/// groups `[899983, 899982]` and path `/EasyTv-DgX/film/1399/05/The.Matrix.1999.…mp4`, and a
+/// pinned Range GET of that path against a group-899982 endpoint (`sx2.gamezula.sbs`)
+/// returns `206` + a real H.264 MP4 (`…ftypmp42`).
+pub fn urn_route(urn: &str) -> (Vec<i64>, String) {
+    let urn = urn.strip_prefix('/').unwrap_or(urn);
+    let (first, rest) = urn.split_once('/').unwrap_or((urn, ""));
+    let groups: Vec<i64> = first.split('.').filter_map(decode_route_id).collect();
+    (groups, format!("/{rest}"))
+}
+
 /// `g41.m46609b(id)`: bespoke base-64 encode of a (file) id, MSB-first.
 pub fn encode_file_id(id: i64) -> String {
     if id == 0 {
@@ -293,6 +345,34 @@ mod tests {
         let url = build_play_url(&salt, &PlayUrlParams { urn: "stream/xyz/novext", file_id: 1, port: 1000 });
         let path = url.strip_prefix("http://").unwrap().split_once('/').unwrap().1;
         assert_eq!(path.split('/').count(), 2, "url={url}");
+    }
+
+    #[test]
+    fn decode_route_id_matrix_segment() {
+        // VERIFIED(live): the Matrix urn's first segment `WNJh.WNJV` → groups 899983, 899982.
+        assert_eq!(decode_route_id("WNJh"), Some(899983));
+        assert_eq!(decode_route_id("WNJV"), Some(899982));
+        // decode stops at the first non-alphabet byte (reading from the end); `.` is not in
+        // the alphabet, so the whole dotted segment decodes to just its last part.
+        assert_eq!(decode_route_id("WNJh.WNJV"), Some(899982));
+        // a leading non-alphabet char (from the end) with no alphabet tail -> None.
+        assert_eq!(decode_route_id(""), None);
+    }
+
+    #[test]
+    fn urn_route_splits_selector_and_path() {
+        let (groups, path) = urn_route(
+            "WNJh.WNJV/EasyTv-DgX/film/1399/05/The.Matrix.1999.REMASTERED.720p.BluRay.HardSub.EasyTV.mp4",
+        );
+        assert_eq!(groups, vec![899983, 899982]);
+        assert_eq!(
+            path,
+            "/EasyTv-DgX/film/1399/05/The.Matrix.1999.REMASTERED.720p.BluRay.HardSub.EasyTV.mp4"
+        );
+        // a leading slash on the urn is tolerated.
+        let (g2, p2) = urn_route("/WNJV/a/b.mp4");
+        assert_eq!(g2, vec![899982]);
+        assert_eq!(p2, "/a/b.mp4");
     }
 
     #[test]

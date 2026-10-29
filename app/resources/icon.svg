@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0b0b0d"/>
+  <rect x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#26262d" stroke-width="2"/>
+  <!-- play mark, flat amber -->
+  <path d="M206 170 L206 342 L348 256 Z" fill="#e3b23c"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#e3b23c" stroke-width="10" opacity="0.35"/>
+</svg>

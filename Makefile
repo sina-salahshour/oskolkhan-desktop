@@ -1,0 +1,90 @@
+# OskolKhan desktop — Linux build/install (Electron + React + Rust core sidecar).
+#
+#   make appimage   build the release sidecar, stage it, build the AppImage
+#   make install    appimage + copy it into the lib prefix + generate a .desktop
+#   make uninstall   remove the installed AppImage, icon and .desktop entry
+#   make clean       remove build/stage artifacts
+#
+# Prefix is configurable:  make install PREFIX=/opt   (default: ~/.local)
+
+SHELL := /bin/bash
+
+APP        := app
+PNPM       ?= pnpm
+CARGO      ?= cargo
+
+PREFIX      ?= $(HOME)/.local
+LIBDIR      ?= $(PREFIX)/lib/oskolkhan
+DESKTOP_DIR ?= $(HOME)/.local/share/applications
+
+CORE_BIN    := target/release/oskol-serve
+STAGED_BIN  := $(APP)/resources/oskol-serve
+# Resolved lazily (after `appimage` has produced it).
+APPIMAGE     = $(firstword $(wildcard $(APP)/dist/*.AppImage))
+
+INSTALLED_APPIMAGE := $(LIBDIR)/OskolKhan.AppImage
+INSTALLED_ICON     := $(LIBDIR)/oskolkhan.png
+DESKTOP_FILE       := $(DESKTOP_DIR)/oskolkhan.desktop
+
+.PHONY: all help deps core stage build appimage install uninstall clean
+
+all: appimage
+
+help:
+	@echo "Targets: core stage build appimage install uninstall clean"
+	@echo "  make appimage   # release sidecar + staged + electron-builder AppImage"
+	@echo "  make install    # + copy into $(LIBDIR) and write $(DESKTOP_FILE)"
+	@echo "Vars: PREFIX=$(PREFIX)  LIBDIR=$(LIBDIR)  DESKTOP_DIR=$(DESKTOP_DIR)"
+
+deps:
+	$(PNPM) --dir $(APP) install
+
+# Build the Rust core sidecar (release) and stage it where electron-builder
+# picks it up as extraResources (-> resources/oskol-serve in the AppImage).
+core:
+	$(CARGO) build --release -p oskol-core --bin oskol-serve
+
+stage: core
+	@mkdir -p $(APP)/resources
+	cp -f $(CORE_BIN) $(STAGED_BIN)
+	chmod +x $(STAGED_BIN)
+
+# Just the electron-vite bundle (main + preload + renderer), no packaging.
+build: deps
+	$(PNPM) --dir $(APP) run build
+
+# Full AppImage: staged sidecar + deps + electron-builder.
+appimage: stage deps
+	$(PNPM) --dir $(APP) run appimage
+	@echo "Built: $(APPIMAGE)"
+
+install: appimage
+	@test -n "$(APPIMAGE)" || { echo "ERROR: no AppImage found in $(APP)/dist"; exit 1; }
+	@mkdir -p $(LIBDIR) $(DESKTOP_DIR)
+	install -m 0755 "$(APPIMAGE)" "$(INSTALLED_APPIMAGE)"
+	install -m 0644 $(APP)/resources/icon.png "$(INSTALLED_ICON)"
+	@printf '%s\n' \
+	  '[Desktop Entry]' \
+	  'Type=Application' \
+	  'Name=OskolKhan' \
+	  'GenericName=Media Client' \
+	  'Comment=OskolKhan desktop media client' \
+	  'Exec=$(INSTALLED_APPIMAGE) --ozone-platform-hint=auto %U' \
+	  'Icon=$(INSTALLED_ICON)' \
+	  'Terminal=false' \
+	  'Categories=AudioVideo;Player;' \
+	  'StartupWMClass=OskolKhan' \
+	  > "$(DESKTOP_FILE)"
+	-update-desktop-database "$(DESKTOP_DIR)" 2>/dev/null || true
+	@echo "Installed: $(INSTALLED_APPIMAGE)"
+	@echo "Desktop entry: $(DESKTOP_FILE)"
+
+uninstall:
+	rm -f "$(INSTALLED_APPIMAGE)" "$(INSTALLED_ICON)" "$(DESKTOP_FILE)"
+	-rmdir "$(LIBDIR)" 2>/dev/null || true
+	-update-desktop-database "$(DESKTOP_DIR)" 2>/dev/null || true
+	@echo "Uninstalled."
+
+clean:
+	rm -rf $(APP)/out $(APP)/dist
+	rm -f $(STAGED_BIN)

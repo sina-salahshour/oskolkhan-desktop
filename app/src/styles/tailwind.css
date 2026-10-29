@@ -1,0 +1,212 @@
+/* OskolKhan design system — Tailwind CSS v4 (config-first, in CSS).
+ * Flat cinematic surfaces, hairline borders, one refined amber/gold accent,
+ * restrained elevation (shadow/scale, not gradients). Dark is the cinematic
+ * default; light is a first-class peer. Persian-first + RTL.
+ *
+ * Theming is CLASS-BASED: ThemeProvider (Worker B) toggles `.dark` / `.light`
+ * on <html> (and sets data-theme + color-scheme). Semantic tokens are plain CSS
+ * variables swapped by that class and surfaced to Tailwind utilities via
+ * `@theme inline` as `--color-<name>` (so the bg, text, border and ring
+ * utilities — plus alpha forms like `bg-accent/90` — all work). */
+
+@import 'tailwindcss';
+
+/* Font faces (@fontsource-variable, OFL): the @font-face + woff2 assets are
+ * pulled in by JS imports in main.tsx so Vite's asset pipeline emits and
+ * fingerprints the woff2 files. The family names are referenced by the font
+ * tokens below. (A CSS @import of these packages routes through Tailwind's
+ * engine, which inlines the CSS but does NOT emit the woff2 — fonts 404.) */
+
+/* Tailwind v4 dark variant keyed off the `.dark` class (not prefers-* alone). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- semantic tokens: DARK (default) ----------------------------------- */
+:root {
+  color-scheme: dark;
+
+  --font-sans: 'Vazirmatn Variable', 'Inter Variable', system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+  --font-display: 'Estedad Variable', 'Vazirmatn Variable', system-ui, sans-serif;
+  --font-latin: 'Inter Variable', system-ui, sans-serif;
+
+  --bg: #0b0b0d;
+  --surface: #151519;
+  --surface-2: #1b1b21;
+  --overlay: #000000; /* modal/backdrop scrim; used as bg-overlay/70 */
+
+  --fg: #f4f4f6;
+  --muted: #a6a6b0;
+  --subtle: #70707a;
+
+  --line: #26262d; /* hairline borders / dividers */
+  --line-strong: #34343d;
+
+  --accent: #e3b23c; /* the one refined amber/gold accent */
+  --accent-fg: #1a1505;
+  --accent-soft: rgba(227, 178, 60, 0.16);
+
+  --danger: #e5484d;
+  --danger-fg: #ffffff;
+  --danger-soft: rgba(229, 72, 77, 0.16);
+
+  --success: #46a758;
+  --success-fg: #04120a;
+  --success-soft: rgba(70, 167, 88, 0.16);
+
+  --warning: #e3b23c;
+  --warning-fg: #1a1505;
+  --warning-soft: rgba(227, 178, 60, 0.16);
+}
+
+/* ---- semantic tokens: LIGHT -------------------------------------------- */
+:root.light,
+.light {
+  color-scheme: light;
+
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f0f0ee;
+  --overlay: #0b0b0d; /* scrim stays dark in light mode */
+
+  --fg: #17171a;
+  --muted: #5a5a63;
+  --subtle: #8a8a92;
+
+  --line: #e4e4e0;
+  --line-strong: #d2d2cc;
+
+  --accent: #b07d12;
+  --accent-fg: #fffdf5;
+  --accent-soft: rgba(176, 125, 18, 0.12);
+
+  --danger: #d1383d;
+  --danger-fg: #ffffff;
+  --danger-soft: rgba(209, 56, 61, 0.12);
+
+  --success: #3a8f4a;
+  --success-fg: #ffffff;
+  --success-soft: rgba(58, 143, 74, 0.12);
+
+  --warning: #b07d12;
+  --warning-fg: #1a1505;
+  --warning-soft: rgba(176, 125, 18, 0.12);
+}
+
+/* ---- surface tokens -> Tailwind color utilities ------------------------ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-overlay: var(--overlay);
+
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-success: var(--success);
+  --color-success-fg: var(--success-fg);
+  --color-success-soft: var(--success-soft);
+
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-soft: var(--warning-soft);
+
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-latin: var(--font-latin);
+}
+
+/* ---- base / reset ------------------------------------------------------ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    direction: rtl;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden; /* the app shell owns its own scroll regions */
+  }
+
+  /* Latin runs (URLs, counts, code) read better in Inter even inside RTL. */
+  [lang='en'],
+  [dir='ltr'] {
+    font-family: var(--font-latin);
+  }
+
+  :where(a) {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :where(button) {
+    font: inherit;
+    color: inherit;
+  }
+
+  :where(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  /* thin, themed scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

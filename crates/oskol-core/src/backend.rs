@@ -3,7 +3,7 @@
 
 use crate::error::{CoreError, Result};
 use crate::protocol::{BackendProtocol, ProtocolContext};
-use crate::routing::{Route, RoutingTable};
+use crate::routing::{is_cf_fallback, Route, RoutingTable, API_GROUP, API_GROUP_SECONDARY};
 use futures::stream::{FuturesUnordered, StreamExt};
 use prost::Message;
 use reqwest::{Method, StatusCode};
@@ -109,6 +109,15 @@ impl Backend {
         self.ctx.read().unwrap().clone()
     }
 
+    /// A ready HTTPS client for `route` (connect IP = `route.ip`, SNI = Host = `route.host`,
+    /// pin-only TLS keyed on `route.pin`, egress bound to `OSKOL_BIND_INTERFACE`). Cached per
+    /// route. Used by the media stream proxy to fetch a real media URL the same way the
+    /// backend reaches the API (pinned, wlan0-bound), but without the API path/selector/
+    /// protocol decoration — the caller sets the absolute URL, UA and Range itself.
+    pub fn client_for_route(&self, route: &Route) -> reqwest::Client {
+        self.client_for(route)
+    }
+
     fn client_for(&self, route: &Route) -> reqwest::Client {
         let key = format!("{}#{}", route.key(), route.pin.as_ref().map(hex::encode).unwrap_or_default());
         let mut clients = self.clients.lock().unwrap();
@@ -140,26 +149,54 @@ impl Backend {
     }
 
     /// Send with failover: starts at the active route; transport errors and 5xx move on.
+    ///
+    /// API requests only ever travel the API-group rows (99999999 / 99999998) plus the
+    /// Cloudflare fallbacks — NEVER the media/other-group rows. Those rows 404 every API
+    /// path, and because a 404 is a successful HTTP response (not a 5xx), the old code
+    /// would latch `active` onto such a row the moment one API call failed over into it,
+    /// poisoning every later call (home/files/itemDetail would then 404 forever). Keeping
+    /// the candidate set to API + CF rows means `active` can only ever point at a row that
+    /// actually serves API paths, and a stale/poisoned `active` self-heals to the first one.
     pub async fn send(&self, req: BackendRequest) -> Result<reqwest::Response> {
         let table = self.table();
         let n = table.routes.len();
         if n == 0 {
             return Err(CoreError::not_ready("no routes"));
         }
-        let start = self.active.load(Ordering::SeqCst) % n;
+        // Candidate row indices (into the priority-sorted table) this request may use.
+        let candidates: Vec<usize> = (0..n)
+            .filter(|&i| {
+                let r = &table.routes[i];
+                is_cf_fallback(r.group, &r.ip) || r.group == API_GROUP || r.group == API_GROUP_SECONDARY
+            })
+            .collect();
+        // No dedicated API group in this table → fall back to trying every row.
+        let candidates = if candidates.is_empty() { (0..n).collect::<Vec<_>>() } else { candidates };
+        let m = candidates.len();
+
+        // Resume at the active row if it is still a candidate, else the first candidate.
+        let active_idx = self.active.load(Ordering::SeqCst) % n;
+        let start = candidates.iter().position(|&i| i == active_idx).unwrap_or(0);
         let mut last_err = None;
-        for i in 0..n {
-            let idx = (start + i) % n;
+        for k in 0..m {
+            let idx = candidates[(start + k) % m];
             let route = &table.routes[idx];
             match self.send_on(route, &req).await {
                 Ok(resp) if resp.status().is_server_error() || resp.status() == StatusCode::BAD_GATEWAY => {
                     last_err = Some(CoreError::server(format!("{} from {}", resp.status(), route.host)));
                 }
                 Ok(resp) => {
-                    if i != 0 {
-                        tracing::info!(host = %route.host, ip = %route.ip, "failed over to route");
+                    // Only latch `active` onto a row that actually served the request (2xx).
+                    // A 404/4xx is returned to the caller but must NOT make the row sticky:
+                    // otherwise one bad-path request (e.g. a wrong getMore URL that 5xx's on
+                    // the real hosts and 404s on the CF fallback) would pin every later call
+                    // to a row that 404s all API paths.
+                    if resp.status().is_success() {
+                        if k != 0 {
+                            tracing::info!(host = %route.host, ip = %route.ip, "failed over to route");
+                        }
+                        self.active.store(idx, Ordering::SeqCst);
                     }
-                    self.active.store(idx, Ordering::SeqCst);
                     return Ok(resp);
                 }
                 Err(e) => {

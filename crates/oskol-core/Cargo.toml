@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "OskolKhan desktop core: bootstrap, routing, backend protocol, session and local asset server"
 
+[[bin]]
+name = "oskol-serve"
+path = "src/bin/oskol-serve.rs"
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

@@ -1,3 +1,12 @@
+packages:
+  - app
+
+allowBuilds:
+  # Electron's postinstall downloads the platform binary (needed for `dev`).
+  electron: true
+  # Windows installer helper — not needed for the Linux AppImage build.
+  electron-winstaller: false
+
 minimumReleaseAgeExclude:
   - '@types/node@26.6.6'
   - '@lucide/svelte@1.63.0'

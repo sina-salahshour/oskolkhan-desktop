@@ -74,7 +74,9 @@ pub struct Core {
     cache: RoutingCache,
     server: AssetServer,
     status_tx: watch::Sender<CoreStatus>,
-    preload: Mutex<Option<PreLoad>>,
+    /// Live PreLoad. Shared (as an `Arc`) with the asset server so its media stream
+    /// handler can read the current `Salt` on every request.
+    preload: Arc<Mutex<Option<PreLoad>>>,
     bootstrap_lock: AsyncMutex<()>,
 }
 
@@ -85,7 +87,11 @@ impl Core {
         let protocol: Arc<dyn BackendProtocol> =
             Arc::new(V0Protocol::new(sessions.device.clone(), config.fallback_user_agent.clone()));
         let backend = Arc::new(Backend::new(protocol, ProtocolContext::default()));
-        let server = AssetServer::start(backend.clone()).await?;
+        // `fallback_user_agent` is the mobile UA the media CDN is gated on; the asset
+        // server's media stream resolves routes through `backend` (pinned + wlan0-bound).
+        let preload: Arc<Mutex<Option<PreLoad>>> = Arc::new(Mutex::new(None));
+        let server =
+            AssetServer::start(backend.clone(), config.fallback_user_agent.clone()).await?;
         let resolver = DohResolver::new();
         let public_http = net::bootstrap_client(&resolver);
         let status = CoreStatus {
@@ -105,7 +111,7 @@ impl Core {
             public_http,
             server,
             status_tx,
-            preload: Mutex::new(None),
+            preload,
             bootstrap_lock: AsyncMutex::new(()),
         });
         core.sync_context();
