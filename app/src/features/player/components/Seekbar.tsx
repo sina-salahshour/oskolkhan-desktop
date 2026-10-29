@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
+import Hls from 'hls.js';
 import { useReducedMotion } from 'motion/react';
 import { useI18n } from '../../../i18n';
 import { cn } from '../../../lib/util/cn';
 import { timecode } from '../lib/format';
+import { usePlayerChrome } from '../store';
 
 export interface SeekbarProps {
 	position: number;
@@ -19,6 +21,32 @@ export function Seekbar({ position, duration, buffered, onSeek }: SeekbarProps) 
 	const [hovering, setHovering] = useState(false);
 	const [hoverRatio, setHoverRatio] = useState(0);
 	const [dragging, setDragging] = useState(false);
+	const thumbBase = usePlayerChrome((s) => s.thumbBase);
+	const sbInterval = usePlayerChrome((s) => s.storyboardInterval);
+	const sbCount = usePlayerChrome((s) => s.storyboardCount);
+	const playlistUrl = usePlayerChrome((s) => s.playlistUrl);
+
+	// A hidden second player for the live-frame preview over already-loaded ranges.
+	const previewVideo = useRef<HTMLVideoElement>(null);
+	const previewHls = useRef<Hls | null>(null);
+	const [previewReady, setPreviewReady] = useState(false);
+
+	useEffect(() => {
+		setPreviewReady(false);
+		const video = previewVideo.current;
+		if (!video || !playlistUrl || !Hls.isSupported()) return;
+		const hls = new Hls({ enableWorker: true, maxBufferLength: 8, maxMaxBufferLength: 16 });
+		previewHls.current = hls;
+		const onReady = () => setPreviewReady(true);
+		hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+		hls.loadSource(playlistUrl);
+		hls.attachMedia(video);
+		return () => {
+			hls.destroy();
+			previewHls.current = null;
+			setPreviewReady(false);
+		};
+	}, [playlistUrl]);
 
 	const playedPct = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
 	const bufferedPct = duration > 0 ? Math.min(100, (buffered / duration) * 100) : 0;
@@ -61,22 +89,87 @@ export function Seekbar({ position, duration, buffered, onSeek }: SeekbarProps) 
 	const active = hovering || dragging;
 	const trans = reduce ? '' : 'transition-all duration-150';
 
+	const hoverTime = hoverRatio * duration;
+	// Clamp the preview to the bar so it doesn't overflow the viewport edges.
+	const clampedLeft = Math.min(94, Math.max(6, hoverRatio * 100));
+
+	// Storyboard frame index for the hovered time. The frames are pre-generated in
+	// the background, so hovering is instant once they exist; a short debounce avoids
+	// hammering not-yet-generated frames during a fast drag. The timecode tracks live.
+	const sbIdx =
+		active && sbInterval > 0 && sbCount > 0 && Number.isFinite(hoverTime)
+			? Math.min(sbCount - 1, Math.max(0, Math.round(hoverTime / sbInterval)))
+			: -1;
+	const [committedIdx, setCommittedIdx] = useState(-1);
+	useEffect(() => {
+		if (sbIdx < 0) return;
+		const id = setTimeout(() => setCommittedIdx(sbIdx), 60);
+		return () => clearTimeout(id);
+	}, [sbIdx]);
+	const thumbUrl =
+		active && thumbBase && committedIdx >= 0
+			? `${thumbBase}/sb${String(committedIdx).padStart(5, '0')}.jpg`
+			: null;
+
+	// Live-frame preview over the already-loaded (buffered) range: seek the hidden
+	// player to the hovered time so we show the real decoded frame there. Debounced
+	// so a fast drag doesn't thrash the seek. Beyond the buffer we keep the storyboard.
+	const loaded = active && duration > 0 && hoverTime <= buffered + 0.5;
+	const [seekTime, setSeekTime] = useState(-1);
+	useEffect(() => {
+		if (!loaded) {
+			setSeekTime(-1);
+			return;
+		}
+		const id = setTimeout(() => setSeekTime(hoverTime), 70);
+		return () => clearTimeout(id);
+	}, [loaded, hoverTime]);
+	useEffect(() => {
+		const v = previewVideo.current;
+		if (!v || !previewReady || seekTime < 0) return;
+		try {
+			v.currentTime = seekTime;
+		} catch {
+			/* ignore */
+		}
+	}, [seekTime, previewReady]);
+	const showLive = loaded && previewReady && seekTime >= 0;
+
 	return (
 		<div dir="ltr" className="group relative w-full py-2">
-			{active ? (
-				<div
-					className="pointer-events-none absolute bottom-full flex -translate-x-1/2 flex-col items-center gap-1.5"
-					style={{ left: `${hoverRatio * 100}%` }}
-				>
-					{/* thumbnail preview placeholder (real frames come with the real PlaybackSource) */}
-					<div className="grid h-[84px] w-[150px] place-items-center rounded-md border border-white/20 bg-black/80 shadow-lg">
-						<span className="text-xs text-white/60">{timecode(hoverRatio * duration, lang)}</span>
-					</div>
-					<div className="rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">
-						{timecode(hoverRatio * duration, lang)}
-					</div>
+			{/* The preview box stays mounted (so the hidden <video> keeps its hls.js
+			    attached) and is just hidden when not hovering. */}
+			<div
+				className="pointer-events-none absolute bottom-full flex -translate-x-1/2 flex-col items-center gap-1.5"
+				style={{ left: `${clampedLeft}%`, visibility: active ? 'visible' : 'hidden' }}
+			>
+				<div className="relative grid h-[84px] w-[150px] place-items-center overflow-hidden rounded-md border border-white/20 bg-black/80 shadow-lg">
+					{/* Timecode behind; storyboard frame over it; live video on top for
+					    loaded ranges. */}
+					<span className="text-xs text-white/50">{timecode(hoverTime, lang)}</span>
+					{thumbUrl ? (
+						<img
+							key={thumbUrl}
+							src={thumbUrl}
+							alt=""
+							draggable={false}
+							onError={(e) => {
+								e.currentTarget.style.visibility = 'hidden';
+							}}
+							className="absolute inset-0 h-full w-full object-cover"
+						/>
+					) : null}
+					<video
+						ref={previewVideo}
+						muted
+						playsInline
+						preload="auto"
+						className="absolute inset-0 h-full w-full object-cover"
+						style={{ visibility: showLive ? 'visible' : 'hidden' }}
+					/>
 				</div>
-			) : null}
+				<div className="rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">{timecode(hoverTime, lang)}</div>
+			</div>
 			<div
 				ref={bar}
 				role="slider"

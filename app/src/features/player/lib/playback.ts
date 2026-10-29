@@ -52,6 +52,14 @@ export interface PlaybackMeta {
 	duration: number;
 	audioTracks: PlaybackAudioTrack[];
 	subtitleTracks: PlaybackSubtitleTrack[];
+	/** Full URL base for storyboard frames, e.g. `http://…/hls/<sid>`. */
+	thumbBase?: string;
+	/** Seconds between storyboard frames. */
+	storyboardInterval?: number;
+	/** How many storyboard frames span the timeline. */
+	storyboardCount?: number;
+	/** Full HLS playlist URL (for the scrub-bar's live-frame preview). */
+	playlistUrl?: string;
 }
 
 export interface PlaybackSource {
@@ -305,6 +313,8 @@ interface HlsOpenResponse {
 	duration: number;
 	audioTracks?: PlaybackAudioTrack[];
 	subtitleTracks?: PlaybackSubtitleTrack[];
+	storyboardCount?: number;
+	storyboardInterval?: number;
 }
 
 /**
@@ -330,6 +340,10 @@ export class HlsPlaybackSource implements PlaybackSource {
 		/** Read lazily at load time — the asset base can change (core restart /
 		 *  status refresh) without this source needing to be torn down. */
 		private readonly getAssetBase: () => string,
+		/** Called once `/hls/open` resolves, with the real tracks + thumbnail base.
+		 *  Routed through the source (not the controller's load) so it fires no matter
+		 *  which path triggered the load (bootstrap or a source-recreation re-apply). */
+		private readonly onMeta?: (meta: PlaybackMeta) => void,
 	) {
 		const on = (type: string, fn: () => void) => {
 			video.addEventListener(type, fn);
@@ -403,26 +417,53 @@ export class HlsPlaybackSource implements PlaybackSource {
 		if (this.disposed) return;
 
 		this.totalDuration = open.duration || 0;
+		// Thumbnail base = the playlist's directory (…/hls/<sid>) on the asset origin.
+		let thumbBase: string | undefined;
+		let playlistUrl: string;
+		try {
+			thumbBase = new URL(open.playlist.replace(/\/index\.m3u8$/, ''), assetBase).href;
+			playlistUrl = new URL(open.playlist, assetBase).href;
+		} catch (e) {
+			console.error('[hls] bad playlist url', e);
+			this.emit({ status: 'error', errorKind: 'generic' });
+			return;
+		}
 		this.lastMeta = {
 			duration: open.duration || 0,
 			audioTracks: open.audioTracks ?? [],
 			subtitleTracks: open.subtitleTracks ?? [],
+			thumbBase,
+			storyboardInterval: open.storyboardInterval,
+			storyboardCount: open.storyboardCount,
+			playlistUrl,
 		};
+		this.onMeta?.(this.lastMeta);
 		// Surface the real duration right away (even before playback starts) so the
 		// scrub bar isn't stuck at --:--.
 		this.emit({ status: 'loading', duration: this.totalDuration });
 
-		let playlistUrl: string;
 		let hls: Hls;
 		try {
-			// The open `playlist` is a root-absolute path including the token; resolve
-			// it against the asset origin.
-			playlistUrl = new URL(open.playlist, assetBase).href;
 			if (!Hls.isSupported()) {
 				this.emit({ status: 'error', errorKind: 'unsupported' });
 				return;
 			}
-			hls = new Hls({ enableWorker: true, lowLatencyMode: false, maxBufferLength: 30 });
+			// Buffer well ahead: each segment is produced on demand (a fresh ffmpeg
+			// seek+encode), so a deep buffer keeps production comfortably ahead of
+			// playback and smooths the occasional slow segment. Tolerate small holes
+			// at copy-mode keyframe boundaries so they don't stall playback.
+			hls = new Hls({
+				enableWorker: true,
+				lowLatencyMode: false,
+				maxBufferLength: 60,
+				maxMaxBufferLength: 180,
+				backBufferLength: 30,
+				maxBufferHole: 1,
+				highBufferWatchdogPeriod: 3,
+				nudgeMaxRetry: 10,
+				fragLoadingMaxRetry: 6,
+				fragLoadingTimeOut: 45000,
+			});
 			this.hls = hls;
 		} catch (e) {
 			console.error('[hls] setup failed', e);

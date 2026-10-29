@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { usePlayerStore } from '../../../lib/stores/player';
 import { useSessionStore } from '../../../lib/stores/session';
-import { HlsPlaybackSource, StubPlaybackSource, type PlaybackRequest, type PlaybackSource, type PlaybackState } from '../lib/playback';
+import { HlsPlaybackSource, StubPlaybackSource, type PlaybackMeta, type PlaybackRequest, type PlaybackSource, type PlaybackState } from '../lib/playback';
 import { usePlayerChrome, type AudioTrack, type SubtitleTrack } from '../store';
 
 export interface PlayerController {
@@ -51,26 +51,9 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 		const load = async (req: PlaybackRequest): Promise<void> => {
 			lastReqRef.current = req;
 			chrome().patch({ nextCountdown: null, playlist: req.playlist, index: req.index });
+			// Real tracks + thumbnail base are patched into the store by the source's
+			// onMeta callback (see the effect below) — which fires on any load path.
 			await src()?.load(req);
-			// Real audio/subtitle tracks discovered by the HLS transcoder (ffprobe).
-			const meta = src()?.meta?.() ?? null;
-			const audioTracks: AudioTrack[] = (meta?.audioTracks ?? []).map((a) => ({
-				id: a.id,
-				label: a.label,
-				lang: a.lang ?? '',
-			}));
-			const subtitleTracks: SubtitleTrack[] = (meta?.subtitleTracks ?? []).map((s) => ({
-				id: s.id,
-				label: s.label,
-				lang: s.lang ?? '',
-				source: s.source,
-			}));
-			chrome().patch({
-				audioTracks,
-				audioTrackId: audioTracks[0]?.id ?? '',
-				subtitleTracks,
-				subtitleTrackId: subtitleTracks[0]?.id ?? null,
-			});
 		};
 
 		const play = () => {
@@ -180,10 +163,30 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 	useEffect(() => {
 		// The source's lifecycle follows the <video> element, NOT the asset base.
 		// assetBase is read lazily at load() time (via the getter) so a core status
-		// refresh never tears down an in-flight load.
+		// refresh never tears down an in-flight load. onMeta patches the real tracks
+		// + thumbnail base into the chrome store whenever a load resolves.
 		const video = videoRef.current;
+		const onMeta = (meta: PlaybackMeta) => {
+			const audioTracks: AudioTrack[] = meta.audioTracks.map((a) => ({ id: a.id, label: a.label, lang: a.lang ?? '' }));
+			const subtitleTracks: SubtitleTrack[] = meta.subtitleTracks.map((s) => ({
+				id: s.id,
+				label: s.label,
+				lang: s.lang ?? '',
+				source: s.source,
+			}));
+			usePlayerChrome.getState().patch({
+				audioTracks,
+				audioTrackId: audioTracks[0]?.id ?? '',
+				subtitleTracks,
+				subtitleTrackId: subtitleTracks[0]?.id ?? null,
+				thumbBase: meta.thumbBase ?? null,
+				storyboardInterval: meta.storyboardInterval ?? 10,
+				storyboardCount: meta.storyboardCount ?? 0,
+				playlistUrl: meta.playlistUrl ?? null,
+			});
+		};
 		const source: PlaybackSource = video
-			? new HlsPlaybackSource(video, () => useSessionStore.getState().assetBase())
+			? new HlsPlaybackSource(video, () => useSessionStore.getState().assetBase(), onMeta)
 			: new StubPlaybackSource();
 		sourceRef.current = source;
 		const unsub = source.subscribe((s: PlaybackState) => {

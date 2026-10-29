@@ -61,6 +61,13 @@ pub struct MediaPlan {
 }
 
 const SEG_SECS: f64 = 6.0;
+/// Target number of storyboard (scrub-preview) frames across the whole video.
+/// They are pre-generated in the background so any hover is instant.
+const STORYBOARD_FRAMES: usize = 100;
+/// But never denser than one frame per this many seconds (short clips).
+const STORYBOARD_MIN_INTERVAL: f64 = 2.0;
+/// Storyboard frame width in px (height keeps aspect).
+const THUMB_WIDTH: i64 = 240;
 
 impl MediaPlan {
     /// Number of segments across the whole timeline.
@@ -257,6 +264,57 @@ impl HlsSession {
         let out_path = self.segment_path(i);
         let args = self.segment_args(start, end, &out_path);
         SegmentJob { index: i, out_path, args }
+    }
+
+    /// Seconds between storyboard frames.
+    pub fn storyboard_interval(&self) -> f64 {
+        if self.plan.duration <= 0.0 {
+            return STORYBOARD_MIN_INTERVAL;
+        }
+        (self.plan.duration / STORYBOARD_FRAMES as f64).max(STORYBOARD_MIN_INTERVAL)
+    }
+
+    /// How many storyboard frames span the timeline.
+    pub fn storyboard_count(&self) -> usize {
+        if self.plan.duration <= 0.0 {
+            return 0;
+        }
+        (self.plan.duration / self.storyboard_interval()).ceil() as usize + 1
+    }
+
+    /// Build a job that extracts one scaled JPEG storyboard frame at index `n`.
+    pub fn sb_job(&self, n: usize) -> SegmentJob {
+        let t = n as f64 * self.storyboard_interval();
+        let out_path = self.dir.join(format!("sb{n:05}.jpg"));
+        let mut a: Vec<String> = Vec::new();
+        for s in [
+            "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-rw_timeout", "30000000",
+            "-user_agent", "oskol-core",
+        ] {
+            a.push(s.to_string());
+        }
+        a.push("-ss".into());
+        a.push(format!("{t:.3}"));
+        a.push("-i".into());
+        a.push(self.local_url.clone());
+        a.push("-frames:v".into());
+        a.push("1".into());
+        a.push("-vf".into());
+        a.push(format!("scale={THUMB_WIDTH}:-2"));
+        a.push("-q:v".into());
+        a.push("5".into());
+        a.push("-f".into());
+        a.push("image2".into());
+        a.push("-update".into());
+        a.push("1".into());
+        a.push(out_path.to_string_lossy().to_string());
+        SegmentJob { index: n, out_path, args: a }
+    }
+
+    /// All storyboard jobs, in order — run sequentially in the background so hovers
+    /// hit pre-generated frames. Self-contained (`Send`), so no session lock is held.
+    pub fn storyboard_jobs(&self) -> Vec<SegmentJob> {
+        (0..self.storyboard_count()).map(|n| self.sb_job(n)).collect()
     }
 
     fn segment_args(&self, start: f64, end: f64, out_path: &std::path::Path) -> Vec<String> {

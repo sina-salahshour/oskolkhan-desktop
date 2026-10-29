@@ -66,6 +66,12 @@ export interface PlayerChromeState {
 	playlist: FileV2[];
 	index: number;
 	panel: PanelKind | null;
+	/** Storyboard scrub-preview: URL base (…/hls/<sid>), frame spacing (s), count. */
+	thumbBase: string | null;
+	storyboardInterval: number;
+	storyboardCount: number;
+	/** HLS playlist URL, for the scrub bar's live-frame preview over loaded ranges. */
+	playlistUrl: string | null;
 
 	patch: (p: Partial<Omit<PlayerChromeState, 'patch' | 'patchStyle' | 'patchSync' | 'resetChrome'>>) => void;
 	patchStyle: (p: Partial<SubtitleStyle>) => void;
@@ -98,6 +104,10 @@ const INITIAL = {
 	playlist: [] as FileV2[],
 	index: 0,
 	panel: null as PanelKind | null,
+	thumbBase: null as string | null,
+	storyboardInterval: 10,
+	storyboardCount: 0,
+	playlistUrl: null as string | null,
 };
 
 export const usePlayerChrome = create<PlayerChromeState>((set) => ({

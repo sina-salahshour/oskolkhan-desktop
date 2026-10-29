@@ -322,11 +322,29 @@ async fn hls_open(
         let started = tokio::task::spawn_blocking(move || HlsSession::start(&urn2, &local2, audio_pos)).await;
         match started {
             Ok(Ok(session)) => {
-                let mut reg = st.sessions.lock().unwrap();
-                // Keep only the current session: dropping the others removes their
-                // cached-segment temp dirs (frees the previous movie's disk).
-                reg.retain(|k, _| k == &sid);
-                reg.insert(sid.clone(), session);
+                let jobs = session.storyboard_jobs();
+                let dir = session.dir.clone();
+                {
+                    let mut reg = st.sessions.lock().unwrap();
+                    // Keep only the current session: dropping the others removes their
+                    // cached-segment temp dirs (frees the previous movie's disk).
+                    reg.retain(|k, _| k == &sid);
+                    reg.insert(sid.clone(), session);
+                }
+                // Pre-generate the storyboard in the background, one frame at a time
+                // (throttled so it doesn't starve playback). Stops if the session's
+                // dir is removed (user switched titles).
+                tokio::spawn(async move {
+                    // Let playback get a head start before we compete for bandwidth.
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    for job in jobs {
+                        if !dir.exists() {
+                            break;
+                        }
+                        let _ = tokio::task::spawn_blocking(move || job.run()).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    }
+                });
             }
             Ok(Err(e)) => {
                 tracing::warn!(error = %e, "hls session start failed");
@@ -362,6 +380,8 @@ async fn hls_open(
         "transcoding": !plan.video_copy,
         "audioTracks": audio_tracks,
         "subtitleTracks": sub_tracks,
+        "storyboardCount": session.storyboard_count(),
+        "storyboardInterval": session.storyboard_interval(),
     });
     json_response(StatusCode::OK, body.to_string())
 }
@@ -394,59 +414,58 @@ async fn hls_file(
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    // Otherwise it must be segNNNNN.ts.
-    let seg_index = file
-        .strip_prefix("seg")
-        .and_then(|s| s.strip_suffix(".ts"))
-        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
-        .and_then(|d| d.parse::<usize>().ok());
-    let Some(i) = seg_index else {
+    // Otherwise it must be segNNNNN.ts (a TS segment) or thumbNNNNN.jpg (a preview).
+    enum Kind {
+        Seg(usize),
+        Thumb(usize),
+    }
+    let parse_n = |s: &str, pre: &str, suf: &str| -> Option<usize> {
+        s.strip_prefix(pre)
+            .and_then(|x| x.strip_suffix(suf))
+            .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+            .and_then(|d| d.parse::<usize>().ok())
+    };
+    let (kind, content_type, cacheable) = if let Some(i) = parse_n(&file, "seg", ".ts") {
+        (Kind::Seg(i), "video/mp2t", "no-store")
+    } else if let Some(n) = parse_n(&file, "sb", ".jpg") {
+        (Kind::Thumb(n), "image/jpeg", "public, max-age=86400")
+    } else {
         return status(StatusCode::NOT_FOUND);
     };
 
-    // Produce (or reuse cached) segment i on a blocking thread. The session's own
-    // local_url + plan are used; cloning the needed bits avoids holding the lock
-    // across the ffmpeg run.
-    let path = {
-        // Fast path: already cached.
-        let cached = transcode::session_dir(&sid).join(&file);
-        if tokio::fs::metadata(&cached).await.map(|m| m.len() > 0).unwrap_or(false) {
-            Some(cached)
-        } else {
-            None
-        }
-    };
-    let path = match path {
-        Some(p) => p,
-        None => {
-            // Not cached — produce it. We need an owned handle to the session; since
-            // HlsSession isn't Clone, do the work under a short-lived Arc by looking
-            // it up and calling ensure_segment on a blocking thread via a raw pointer
-            // is unsafe — instead, reconstruct the args from stored fields by cloning.
-            let produced = {
-                let reg = st.sessions.lock().unwrap();
-                match reg.get(&sid) {
-                    Some(session) => {
-                        if i >= session.plan.segment_count() {
-                            return status(StatusCode::NOT_FOUND);
-                        }
-                        // Clone the minimal inputs needed to run ffmpeg off-lock.
-                        Some(session.segment_job(i))
-                    }
-                    None => None,
-                }
-            };
-            let Some(job) = produced else {
+    // Fast path: already cached on disk.
+    let cached = transcode::session_dir(&sid).join(&file);
+    let path = if tokio::fs::metadata(&cached).await.map(|m| m.len() > 0).unwrap_or(false) {
+        cached
+    } else {
+        // Build the ffmpeg job under the lock (bounds-checked), run it off-lock.
+        let job = {
+            let reg = st.sessions.lock().unwrap();
+            let Some(session) = reg.get(&sid) else {
                 return status(StatusCode::NOT_FOUND);
             };
-            match tokio::task::spawn_blocking(move || job.run()).await {
-                Ok(Ok(p)) => p,
-                Ok(Err(e)) => {
-                    tracing::warn!(sid = %sid, seg = i, error = %e, "segment produce failed");
-                    return status(StatusCode::BAD_GATEWAY);
+            match kind {
+                Kind::Seg(i) => {
+                    if i >= session.plan.segment_count() {
+                        return status(StatusCode::NOT_FOUND);
+                    }
+                    session.segment_job(i)
                 }
-                Err(_) => return status(StatusCode::INTERNAL_SERVER_ERROR),
+                Kind::Thumb(n) => {
+                    if n >= session.storyboard_count() {
+                        return status(StatusCode::NOT_FOUND);
+                    }
+                    session.sb_job(n)
+                }
             }
+        };
+        match tokio::task::spawn_blocking(move || job.run()).await {
+            Ok(Ok(p)) => p,
+            Ok(Err(e)) => {
+                tracing::warn!(sid = %sid, file = %file, error = %e, "hls artifact produce failed");
+                return status(StatusCode::BAD_GATEWAY);
+            }
+            Err(_) => return status(StatusCode::INTERNAL_SERVER_ERROR),
         }
     };
 
@@ -454,9 +473,9 @@ async fn hls_file(
         Ok(bytes) => {
             let mut b = Response::builder()
                 .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "video/mp2t")
+                .header(header::CONTENT_TYPE, content_type)
                 .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .header(header::CACHE_CONTROL, "no-store");
+                .header(header::CACHE_CONTROL, cacheable);
             if method == Method::HEAD {
                 return b.body(Body::empty()).unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
             }
