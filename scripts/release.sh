@@ -158,13 +158,41 @@ git push origin "$BRANCH"
 git push origin "$TAG"
 
 # --- GitHub release --------------------------------------------------------
-info "Creating GitHub release $TAG"
+# Create the release as a draft first (so it's never visible without its
+# assets), upload each asset with a live progress bar, then publish — unless
+# --draft was requested, in which case it's left as a draft.
+#
+# `gh release create <files>` uploads silently; to show upload progress we POST
+# each asset to GitHub's uploads API with `curl --progress-bar` (streams the file
+# and prints a live bar), authenticated with the gh token.
+info "Creating GitHub release $TAG (draft)…"
 notes_arg=(--generate-notes)
 [ -n "$NOTES" ] && notes_arg=(--notes "$NOTES")
-gh release create "$TAG" \
-	--title "$TAG" \
-	$DRAFT $PRERELEASE \
-	"${notes_arg[@]}" \
-	${ASSETS+"${ASSETS[@]}"}
+gh release create "$TAG" --title "$TAG" --draft $PRERELEASE "${notes_arg[@]}"
 
-info "Done: $(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$TAG")"
+if [ "${#ASSETS[@]}" -gt 0 ]; then
+	REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+	RELID=$(gh release view "$TAG" --json databaseId -q .databaseId)
+	TOKEN=$(gh auth token)
+	for asset in "${ASSETS[@]}"; do
+		name=$(basename "$asset")
+		info "Uploading $name ($(du -h "$asset" | cut -f1))…"
+		if ! curl --fail --progress-bar -X POST \
+			-H "Authorization: Bearer $TOKEN" \
+			-H "Content-Type: application/octet-stream" \
+			-H "Accept: application/vnd.github+json" \
+			--data-binary @"$asset" \
+			"https://uploads.github.com/repos/$REPO/releases/$RELID/assets?name=$name" \
+			>/dev/null; then
+			echo "  ! upload of $name failed; retry later with:" >&2
+			echo "      gh release upload $TAG \"$asset\"" >&2
+		fi
+	done
+fi
+
+if [ -n "$DRAFT" ]; then
+	info "Left as draft: $(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$TAG")"
+else
+	gh release edit "$TAG" --draft=false >/dev/null
+	info "Published: $(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$TAG")"
+fi
