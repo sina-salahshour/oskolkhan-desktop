@@ -1,6 +1,6 @@
 {
   "name": "oskolkhan-app",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "description": "OskolKhan desktop — Electron + React renderer and shell",
