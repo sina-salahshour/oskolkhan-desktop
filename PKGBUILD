@@ -8,7 +8,7 @@
 # core to the physical uplink (the backend is reachable there even behind a VPN).
 
 pkgname=oskolkhan
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="OskolKhan desktop media client (Electron + React + Rust core)"
 arch=('x86_64')
