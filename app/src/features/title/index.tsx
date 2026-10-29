@@ -19,7 +19,10 @@ import { ratingMeta } from './lib/badges';
 
 function firstPlayable(node: GroupInfoV2 | null | undefined): { file: FileV2 } | null {
 	if (!node) return null;
-	if (node.Files.length) return { file: node.Files[0] };
+	// Prefer real media; skip external/trailer urns so "Play" plays the movie,
+	// not a YouTube trailer.
+	const f = node.Files.find((x) => !/^https?:\/\//i.test(x.urn));
+	if (f) return { file: f };
 	for (const c of node.Child) {
 		const r = firstPlayable(c);
 		if (r) return r;

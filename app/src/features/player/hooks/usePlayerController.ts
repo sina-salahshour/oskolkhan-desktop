@@ -6,17 +6,8 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { usePlayerStore } from '../../../lib/stores/player';
 import { useSessionStore } from '../../../lib/stores/session';
-import { Html5PlaybackSource, StubPlaybackSource, type PlaybackRequest, type PlaybackSource, type PlaybackState } from '../lib/playback';
+import { HlsPlaybackSource, StubPlaybackSource, type PlaybackRequest, type PlaybackSource, type PlaybackState } from '../lib/playback';
 import { usePlayerChrome, type AudioTrack, type SubtitleTrack } from '../store';
-
-const MOCK_AUDIO: AudioTrack[] = [
-	{ id: 'a0', label: 'اصلی', lang: 'en' },
-	{ id: 'a1', label: 'دوبله فارسی', lang: 'fa' },
-];
-const MOCK_SUBS: SubtitleTrack[] = [
-	{ id: 's0', label: 'فارسی', lang: 'fa', source: 'server' },
-	{ id: 's1', label: 'English (SDH)', lang: 'en', source: 'embedded' },
-];
 
 export interface PlayerController {
 	load: (req: PlaybackRequest) => Promise<void>;
@@ -40,10 +31,11 @@ export interface PlayerController {
 export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>): PlayerController {
 	const sourceRef = useRef<PlaybackSource | null>(null);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-	// Reactive: becomes non-empty once the core reports its asset-server base, which
-	// (re)creates the real HTML5 source below. Empty → stub.
-	const assetBase = useSessionStore((s) => s.assetBase());
-
+	// The last request handed to load(), and whether the player wants it playing.
+	// If the source is recreated (StrictMode remount, video element swap) while a
+	// load is in flight, the new source re-applies this so playback isn't lost.
+	const lastReqRef = useRef<PlaybackRequest | null>(null);
+	const playIntentRef = useRef(false);
 	const clearCountdownTimer = useCallback(() => {
 		if (countdownRef.current) {
 			clearInterval(countdownRef.current);
@@ -57,20 +49,38 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 		const src = () => sourceRef.current;
 
 		const load = async (req: PlaybackRequest): Promise<void> => {
-			chrome().patch({
-				audioTracks: MOCK_AUDIO,
-				audioTrackId: 'a0',
-				subtitleTracks: MOCK_SUBS,
-				subtitleTrackId: 's0',
-				nextCountdown: null,
-				playlist: req.playlist,
-				index: req.index,
-			});
+			lastReqRef.current = req;
+			chrome().patch({ nextCountdown: null, playlist: req.playlist, index: req.index });
 			await src()?.load(req);
+			// Real audio/subtitle tracks discovered by the HLS transcoder (ffprobe).
+			const meta = src()?.meta?.() ?? null;
+			const audioTracks: AudioTrack[] = (meta?.audioTracks ?? []).map((a) => ({
+				id: a.id,
+				label: a.label,
+				lang: a.lang ?? '',
+			}));
+			const subtitleTracks: SubtitleTrack[] = (meta?.subtitleTracks ?? []).map((s) => ({
+				id: s.id,
+				label: s.label,
+				lang: s.lang ?? '',
+				source: s.source,
+			}));
+			chrome().patch({
+				audioTracks,
+				audioTrackId: audioTracks[0]?.id ?? '',
+				subtitleTracks,
+				subtitleTrackId: subtitleTracks[0]?.id ?? null,
+			});
 		};
 
-		const play = () => src()?.play();
-		const pause = () => src()?.pause();
+		const play = () => {
+			playIntentRef.current = true;
+			src()?.play();
+		};
+		const pause = () => {
+			playIntentRef.current = false;
+			src()?.pause();
+		};
 		const togglePlay = () => {
 			if (chrome().status === 'playing') pause();
 			else play();
@@ -168,11 +178,13 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 
 	// Create the source, subscribe, mirror state into both stores.
 	useEffect(() => {
+		// The source's lifecycle follows the <video> element, NOT the asset base.
+		// assetBase is read lazily at load() time (via the getter) so a core status
+		// refresh never tears down an in-flight load.
 		const video = videoRef.current;
-		const source: PlaybackSource =
-			video && assetBase
-				? new Html5PlaybackSource(video, assetBase)
-				: new StubPlaybackSource();
+		const source: PlaybackSource = video
+			? new HlsPlaybackSource(video, () => useSessionStore.getState().assetBase())
+			: new StubPlaybackSource();
 		sourceRef.current = source;
 		const unsub = source.subscribe((s: PlaybackState) => {
 			const player = usePlayerStore.getState();
@@ -192,6 +204,16 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 				actions.startNextCountdown(10);
 			}
 		});
+		// If a load was already requested when this source was (re)created — e.g. a
+		// StrictMode remount, or the video element being swapped mid-playback — the
+		// previous source was torn down before/while its load resolved. Re-apply the
+		// last request on the fresh source so playback is never silently lost.
+		if (lastReqRef.current) {
+			const req = lastReqRef.current;
+			void source.load(req).then(() => {
+				if (playIntentRef.current) source.play();
+			});
+		}
 		return () => {
 			clearCountdownTimer();
 			unsub();
@@ -200,7 +222,7 @@ export function usePlayerController(videoRef: RefObject<HTMLVideoElement | null>
 			usePlayerStore.getState().setPlaying(false);
 			usePlayerChrome.getState().resetChrome();
 		};
-	}, [actions, clearCountdownTimer, videoRef, assetBase]);
+	}, [actions, clearCountdownTimer, videoRef]);
 
 	return actions;
 }

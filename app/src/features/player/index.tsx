@@ -26,7 +26,10 @@ interface Found {
 
 function firstPlayable(node: GroupInfoV2 | null): Found | null {
 	if (!node) return null;
-	if (node.Files.length) return { file: node.Files[0], list: node.Files, index: 0 };
+	// Prefer a real media file; skip external/trailer urns (YouTube/Aparat links)
+	// — those are opened in the browser, not run through the HLS transcoder.
+	const idx = node.Files.findIndex((f) => !/^https?:\/\//i.test(f.urn));
+	if (idx >= 0) return { file: node.Files[idx], list: node.Files, index: idx };
 	for (const c of node.Child) {
 		const r = firstPlayable(c);
 		if (r) return r;
@@ -270,7 +273,7 @@ export default function PlayerScreen() {
 				idle && 'cursor-none',
 			)}
 		>
-			{/* stub video surface: a real PlaybackSource drops a <video>/mpv surface here */}
+			{/* HLS playback surface: HlsPlaybackSource attaches hls.js to the <video>. */}
 			<div
 				className="absolute inset-0 select-none"
 				style={{ background: 'radial-gradient(120% 90% at 50% 40%, #0d0d10, #000)' }}
@@ -281,7 +284,7 @@ export default function PlayerScreen() {
 				tabIndex={0}
 				aria-label={t('common.play')}
 			>
-				<video ref={videoRef} className="pointer-events-none absolute inset-0 h-full w-full" playsInline />
+				<video ref={videoRef} className="pointer-events-none absolute inset-0 h-full w-full object-contain" playsInline />
 				<div className="pointer-events-none absolute inset-0 grid place-items-center">
 					{loading ? (
 						<Spinner size={44} label="Loading" />

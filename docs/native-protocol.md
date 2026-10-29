@@ -777,3 +777,26 @@ Smoke it (sidecar bound to wlan0; hit 127.0.0.1 directly — the core binds wlan
 curl -i -r 0-1048575 'http://127.0.0.1:<assetPort>/<assetToken>/stream?urn=<url-encoded urn>&id=<id>'
 # -> 206 Partial Content, content-range: bytes 0-1048575/1364804566, body begins …ftypmp42
 ```
+
+## §14 — In-app playback: on-demand HLS transcode (NOT backend protocol; our core)
+
+Bundled Chromium can't play MKV/HEVC/AC3/DTS, so the core transcodes/remuxes for the
+in-app player. This is local plumbing, independent of the backend protocol above.
+
+- `GET /<token>/hls/open?urn=<enc>&id=<fid>[&audio=<pos>]` → ffprobe the media (over the
+  local `/stream` URL) and return JSON `{ playlist, duration, width, height, videoCodec,
+  transcoding, audioTracks[], subtitleTracks[] }`. No transcoding happens here (fast).
+- `GET /<token>/hls/<sid>/index.m3u8` → a **VOD** playlist: the whole timeline declared up
+  front as N fixed-length (6s) MPEG-TS segments, `#EXT-X-ENDLIST`.
+- `GET /<token>/hls/<sid>/segNNNNN.ts` → the segment is produced **on demand** and cached:
+  `ffmpeg -copyts -ss <t> -i <local /stream> -to <t+6> -c:v copy|h264_nvenc -c:a copy|aac
+  -f mpegts`. `-copyts` keeps absolute PTS so each independently-produced segment lands at
+  the right place on the hls.js timeline (fMP4 fragments can't do this without rewriting
+  base-decode-time). Seeking = produce just the target segment (~1s), so any point is
+  instantly reachable with no whole-file transcode and no /tmp blow-up.
+- Codec decision (ffprobe): H.264 8-bit + AAC → remux (`-c copy`); otherwise transcode
+  (HEVC→h264_nvenc, AC3/DTS/EAC3/multichannel→AAC stereo). ffmpeg reads the core's own
+  `/stream` endpoint, inheriting the pinned-TLS / SNI / wlan0 / Range egress.
+- One active session at a time (opening another drops the previous session's cached-segment
+  temp dir). External/trailer urns (YouTube/Aparat, `http(s)://…`) are NOT transcoded — the
+  client opens them in the system browser and `firstPlayable` skips them.

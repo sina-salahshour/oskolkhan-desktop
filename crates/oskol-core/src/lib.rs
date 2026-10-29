@@ -17,6 +17,7 @@ pub mod server;
 pub mod session;
 pub mod superloader;
 pub mod tls;
+pub mod transcode;
 
 pub use crate::core::{Core, CoreConfig, CoreStatus, Phase};
 pub use crate::error::{CoreError, ErrorCode, Result};

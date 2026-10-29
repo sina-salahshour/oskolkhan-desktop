@@ -16,14 +16,16 @@
 use crate::backend::{Backend, BackendRequest};
 use crate::media;
 use crate::routing::Route;
+use crate::transcode::{self, HlsSession};
 use axum::body::Body;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, Response, StatusCode};
 use axum::routing::get;
 use axum::Router;
 use futures::StreamExt;
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 struct ServerState {
@@ -31,6 +33,12 @@ struct ServerState {
     backend: Arc<Backend>,
     /// Mobile UA the media CDN is gated on (`CoreConfig.fallback_user_agent`).
     user_agent: Arc<str>,
+    /// This server's own loopback base, `http://127.0.0.1:<port>/<token>`, so the
+    /// HLS transcoder can point ffmpeg at the local `/stream` endpoint.
+    base: Arc<str>,
+    /// Live HLS transcode sessions, keyed by urn session id. Dropping an entry
+    /// kills its ffmpeg and removes the temp dir.
+    sessions: Arc<Mutex<HashMap<String, HlsSession>>>,
 }
 
 pub struct AssetServer {
@@ -48,19 +56,25 @@ impl AssetServer {
     /// media stream resolves routes through `backend` (pinned + wlan0-bound per route).
     pub async fn start(backend: Arc<Backend>, user_agent: String) -> std::io::Result<Self> {
         let token = hex::encode(rand::random::<[u8; 24]>());
+        // Sweep any HLS temp dirs left by a previous (crashed) run.
+        let _ = std::fs::remove_dir_all(std::env::temp_dir().join("oskol-hls"));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let addr = listener.local_addr()?;
         let state = ServerState {
             token: token.clone().into(),
             backend,
             user_agent: user_agent.into(),
+            base: format!("http://{addr}/{token}").into(),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
         };
         let app = Router::new()
-            // Matched before the catch-all: matchit gives the static `stream`
-            // segment priority over `{*path}`.
+            // Matched before the catch-all: matchit gives the static segments
+            // priority over `{*path}`.
             .route("/{token}/stream", get(stream).head(stream))
+            .route("/{token}/hls/open", get(hls_open))
+            .route("/{token}/hls/{sid}/{file}", get(hls_file).head(hls_file))
             .route("/{token}/{*path}", get(proxy).head(proxy))
             .with_state(state);
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
-        let addr = listener.local_addr()?;
         let task = tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, app).await {
                 tracing::error!(error = %e, "asset server stopped");
@@ -237,6 +251,220 @@ fn forward(upstream: reqwest::Response, method: &Method) -> Response<Body> {
 
 fn status(code: StatusCode) -> Response<Body> {
     Response::builder().status(code).body(Body::empty()).unwrap()
+}
+
+fn json_response(code: StatusCode, body: String) -> Response<Body> {
+    Response::builder()
+        .status(code)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(body))
+        .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR))
+}
+
+fn audio_label(a: &transcode::AudioInfo, pos: usize) -> String {
+    a.title
+        .clone()
+        .or_else(|| a.lang.clone())
+        .unwrap_or_else(|| format!("Audio {}", pos + 1))
+}
+
+fn sub_label(s: &transcode::SubInfo, pos: usize) -> String {
+    s.title
+        .clone()
+        .or_else(|| s.lang.clone())
+        .unwrap_or_else(|| format!("Subtitle {}", pos + 1))
+}
+
+/// `GET /<token>/hls/open?urn=<urn>&id=<fileId>[&audio=<pos>]`: probe the media and
+/// create (or reuse) an on-demand transcode session, returning `{ playlist, duration,
+/// audioTracks, subtitleTracks, … }` as JSON. No transcoding happens here — segments
+/// are produced lazily as hls.js requests them — so this returns as soon as ffprobe
+/// finishes. The renderer feeds `playlist` to hls.js.
+async fn hls_open(
+    State(st): State<ServerState>,
+    Path(token): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response<Body> {
+    if !constant_time_eq(token.as_bytes(), st.token.as_bytes()) {
+        return status(StatusCode::NOT_FOUND);
+    }
+    let Some((urn, id)) = parse_stream_query(query.as_deref()) else {
+        return json_response(StatusCode::BAD_REQUEST, r#"{"error":"missing urn"}"#.into());
+    };
+    let audio_pos = query
+        .as_deref()
+        .and_then(|q| {
+            url::form_urlencoded::parse(q.as_bytes())
+                .find(|(k, _)| k == "audio")
+                .and_then(|(_, v)| v.parse::<usize>().ok())
+        })
+        .unwrap_or(0);
+
+    // ffmpeg reads the core's own /stream endpoint (reusing the pinned/wlan0 egress).
+    let local_url = {
+        let mut s = format!("{}/stream?", st.base);
+        s.push_str(
+            &url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("urn", &urn)
+                .append_pair("id", &id.to_string())
+                .finish(),
+        );
+        s
+    };
+
+    let sid = transcode::session_id(&urn, audio_pos);
+    let has = st.sessions.lock().unwrap().contains_key(&sid);
+    if !has {
+        let urn2 = urn.clone();
+        let local2 = local_url.clone();
+        let started = tokio::task::spawn_blocking(move || HlsSession::start(&urn2, &local2, audio_pos)).await;
+        match started {
+            Ok(Ok(session)) => {
+                let mut reg = st.sessions.lock().unwrap();
+                // Keep only the current session: dropping the others removes their
+                // cached-segment temp dirs (frees the previous movie's disk).
+                reg.retain(|k, _| k == &sid);
+                reg.insert(sid.clone(), session);
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "hls session start failed");
+                return json_response(StatusCode::BAD_GATEWAY, serde_json::json!({ "error": e.to_string() }).to_string());
+            }
+            Err(e) => return json_response(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({ "error": e.to_string() }).to_string()),
+        }
+    }
+
+    let reg = st.sessions.lock().unwrap();
+    let Some(session) = reg.get(&sid) else {
+        return json_response(StatusCode::BAD_GATEWAY, r#"{"error":"session lost"}"#.into());
+    };
+    let plan = &session.plan;
+    let audio_tracks: Vec<_> = plan
+        .audios
+        .iter()
+        .enumerate()
+        .map(|(i, a)| serde_json::json!({ "id": format!("a{i}"), "label": audio_label(a, i), "lang": a.lang }))
+        .collect();
+    let sub_tracks: Vec<_> = plan
+        .subs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| serde_json::json!({ "id": format!("s{i}"), "label": sub_label(s, i), "lang": s.lang, "source": "server", "text": s.text }))
+        .collect();
+    let body = serde_json::json!({
+        "playlist": format!("/{}/hls/{}/index.m3u8", token, sid),
+        "duration": plan.duration,
+        "width": plan.width,
+        "height": plan.height,
+        "videoCodec": plan.video_codec,
+        "transcoding": !plan.video_copy,
+        "audioTracks": audio_tracks,
+        "subtitleTracks": sub_tracks,
+    });
+    json_response(StatusCode::OK, body.to_string())
+}
+
+/// `GET /<token>/hls/<sid>/<file>`: serve the VOD playlist (`index.m3u8`) or a TS
+/// segment (`segNNNNN.ts`). Segments are produced on demand (ffmpeg seek+encode)
+/// and cached. The filename is whitelisted to prevent path traversal.
+async fn hls_file(
+    State(st): State<ServerState>,
+    Path((token, sid, file)): Path<(String, String, String)>,
+    method: Method,
+) -> Response<Body> {
+    if !constant_time_eq(token.as_bytes(), st.token.as_bytes()) {
+        return status(StatusCode::NOT_FOUND);
+    }
+
+    // The playlist is generated from the session plan (not a file on disk).
+    if file == "index.m3u8" {
+        let reg = st.sessions.lock().unwrap();
+        let Some(session) = reg.get(&sid) else {
+            return status(StatusCode::NOT_FOUND);
+        };
+        let body = transcode::build_vod_playlist(&session.plan);
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(body))
+            .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
+    }
+
+    // Otherwise it must be segNNNNN.ts.
+    let seg_index = file
+        .strip_prefix("seg")
+        .and_then(|s| s.strip_suffix(".ts"))
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+        .and_then(|d| d.parse::<usize>().ok());
+    let Some(i) = seg_index else {
+        return status(StatusCode::NOT_FOUND);
+    };
+
+    // Produce (or reuse cached) segment i on a blocking thread. The session's own
+    // local_url + plan are used; cloning the needed bits avoids holding the lock
+    // across the ffmpeg run.
+    let path = {
+        // Fast path: already cached.
+        let cached = transcode::session_dir(&sid).join(&file);
+        if tokio::fs::metadata(&cached).await.map(|m| m.len() > 0).unwrap_or(false) {
+            Some(cached)
+        } else {
+            None
+        }
+    };
+    let path = match path {
+        Some(p) => p,
+        None => {
+            // Not cached — produce it. We need an owned handle to the session; since
+            // HlsSession isn't Clone, do the work under a short-lived Arc by looking
+            // it up and calling ensure_segment on a blocking thread via a raw pointer
+            // is unsafe — instead, reconstruct the args from stored fields by cloning.
+            let produced = {
+                let reg = st.sessions.lock().unwrap();
+                match reg.get(&sid) {
+                    Some(session) => {
+                        if i >= session.plan.segment_count() {
+                            return status(StatusCode::NOT_FOUND);
+                        }
+                        // Clone the minimal inputs needed to run ffmpeg off-lock.
+                        Some(session.segment_job(i))
+                    }
+                    None => None,
+                }
+            };
+            let Some(job) = produced else {
+                return status(StatusCode::NOT_FOUND);
+            };
+            match tokio::task::spawn_blocking(move || job.run()).await {
+                Ok(Ok(p)) => p,
+                Ok(Err(e)) => {
+                    tracing::warn!(sid = %sid, seg = i, error = %e, "segment produce failed");
+                    return status(StatusCode::BAD_GATEWAY);
+                }
+                Err(_) => return status(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        }
+    };
+
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => {
+            let mut b = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "video/mp2t")
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .header(header::CACHE_CONTROL, "no-store");
+            if method == Method::HEAD {
+                return b.body(Body::empty()).unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR));
+            }
+            b = b.header(header::CONTENT_LENGTH, bytes.len());
+            b.body(Body::from(bytes)).unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR))
+        }
+        Err(_) => status(StatusCode::NOT_FOUND),
+    }
 }
 
 #[cfg(test)]
