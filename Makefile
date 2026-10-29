@@ -16,6 +16,10 @@ CARGO      ?= cargo
 PREFIX      ?= $(HOME)/.local
 LIBDIR      ?= $(PREFIX)/lib/oskolkhan
 DESKTOP_DIR ?= $(HOME)/.local/share/applications
+# Network interface the core binds its upstream HTTP clients to (the OskolKhan
+# backend is reachable on the physical uplink, even when a VPN owns the default
+# route). Baked into the launcher's env; override with: make install BIND_IFACE=…
+BIND_IFACE  ?= wlan0
 
 CORE_BIN    := target/release/oskol-serve
 STAGED_BIN  := $(APP)/resources/oskol-serve
@@ -69,7 +73,7 @@ install: appimage
 	  'Name=OskolKhan' \
 	  'GenericName=Media Client' \
 	  'Comment=OskolKhan desktop media client' \
-	  'Exec=$(INSTALLED_APPIMAGE) --ozone-platform-hint=auto %U' \
+	  'Exec=env OSKOL_BIND_INTERFACE=$(BIND_IFACE) $(INSTALLED_APPIMAGE) --ozone-platform-hint=auto %U' \
 	  'Icon=$(INSTALLED_ICON)' \
 	  'Terminal=false' \
 	  'Categories=AudioVideo;Player;' \
