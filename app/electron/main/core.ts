@@ -67,7 +67,7 @@ export class CoreSidecar {
     let cwd: string
 
     if (app.isPackaged) {
-      command = join(process.resourcesPath, 'oskol-serve')
+      command = join(process.resourcesPath, process.platform === 'win32' ? 'oskol-serve.exe' : 'oskol-serve')
       args = []
       cwd = process.resourcesPath
     } else {

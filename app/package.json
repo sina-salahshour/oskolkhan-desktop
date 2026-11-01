@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "start": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
-    "appimage": "electron-vite build && electron-builder --linux AppImage"
+    "appimage": "electron-vite build && electron-builder --linux AppImage",
+    "win": "electron-vite build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@fontsource-variable/estedad": "^5.3.0",
@@ -90,12 +91,6 @@
       "out/**/*",
       "resources/**/*"
     ],
-    "extraResources": [
-      {
-        "from": "resources/oskol-serve",
-        "to": "oskol-serve"
-      }
-    ],
     "linux": {
       "target": [
         "AppImage"
@@ -110,10 +105,56 @@
           "Categories": "AudioVideo;Player;",
           "Comment": "OskolKhan desktop media client"
         }
-      }
+      },
+      "extraResources": [
+        {
+          "from": "resources/oskol-serve",
+          "to": "oskol-serve"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.png",
+      "extraResources": [
+        {
+          "from": "resources/oskol-serve.exe",
+          "to": "oskol-serve.exe"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OskolKhan",
+      "artifactName": "OskolKhan-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "OskolKhan-${version}-${arch}-portable.${ext}"
     },
     "appImage": {
       "artifactName": "OskolKhan-${version}-${arch}.AppImage"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "sina-salahshour",
+      "repo": "oskolkhan-desktop"
     }
   }
 }
