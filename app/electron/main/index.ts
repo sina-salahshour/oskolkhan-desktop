@@ -26,25 +26,50 @@ const KNOWN_PLAYERS: Array<{ id: string; name: string; bin: string }> = [
   { id: 'smplayer', name: 'SMPlayer', bin: 'smplayer' },
   { id: 'mpc-qt', name: 'MPC-Qt', bin: 'mpc-qt' },
   { id: 'iina', name: 'IINA', bin: 'iina' },
-  { id: 'totem', name: 'Videos (Totem)', bin: 'totem' }
+  { id: 'totem', name: 'Videos (Totem)', bin: 'totem' },
+  // Windows-only players.
+  { id: 'mpc-hc', name: 'MPC-HC', bin: process.arch === 'x64' ? 'mpc-hc64' : 'mpc-hc' },
+  { id: 'potplayer', name: 'PotPlayer', bin: process.arch === 'x64' ? 'PotPlayerMini64' : 'PotPlayerMini' }
 ]
 
-/** Resolve a bare binary name against PATH; null if not found/executable. */
-function whichBin(bin: string): string | null {
+const IS_WIN = process.platform === 'win32'
+
+/** Windows players that are rarely on PATH: their usual install locations. */
+function windowsInstallDirs(id: string): string[] {
+  const roots = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)'], process.env['LOCALAPPDATA']].filter(
+    (r): r is string => !!r
+  )
+  const sub: Record<string, string[]> = {
+    vlc: ['VideoLAN\\VLC'],
+    mpv: ['mpv', 'Programs\\mpv'],
+    'mpc-hc': ['MPC-HC', 'K-Lite Codec Pack\\MPC-HC64'],
+    potplayer: ['DAUM\\PotPlayer'],
+    'mpc-qt': ['MPC-Qt'],
+    smplayer: ['SMPlayer']
+  }
+  return (sub[id] ?? []).flatMap((s) => roots.map((r) => join(r, s)))
+}
+
+/**
+ * Resolve a bare binary name against PATH (plus, on Windows, PATHEXT extensions
+ * and the player's well-known install dirs); null if not found.
+ */
+function whichBin(bin: string, id = bin): string | null {
   const dirs = (process.env.PATH ?? '').split(delimiter)
+  if (IS_WIN) dirs.push(...windowsInstallDirs(id))
+  const exts = IS_WIN ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean) : ['']
   for (const d of dirs) {
     if (!d) continue
-    const p = join(d, bin)
-    if (existsSync(p)) return p
+    for (const ext of exts) {
+      const p = join(d, bin + ext)
+      if (existsSync(p)) return p
+    }
   }
   return null
 }
 
-/** Scan PATH for the known players RIGHT NOW. Called fresh on every bootinfo
- *  request (each app launch and each window reload), so a player the user just
- *  installed shows up without rebuilding. */
 function detectPlayers(): Array<{ id: string; name: string; bin: string }> {
-  return KNOWN_PLAYERS.map((p) => ({ ...p, bin: whichBin(p.bin) ?? '' })).filter((p) => p.bin !== '')
+  return KNOWN_PLAYERS.map((p) => ({ ...p, bin: whichBin(p.bin, p.id) ?? '' })).filter((p) => p.bin !== '')
 }
 
 // ---------------------------------------------------------------------------

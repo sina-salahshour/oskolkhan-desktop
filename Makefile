@@ -1,6 +1,7 @@
-# OskolKhan desktop — Linux build/install (Electron + React + Rust core sidecar).
+# OskolKhan desktop — Linux/Windows build/install (Electron + React + Rust core sidecar).
 #
 #   make appimage   build the release sidecar, stage it, build the AppImage
+#   make windows    cross-build the Windows x64 NSIS installer + portable .exe
 #   make install    appimage + copy it into the lib prefix + generate a .desktop
 #   make uninstall   remove the installed AppImage, icon and .desktop entry
 #   make clean       remove build/stage artifacts
@@ -26,17 +27,23 @@ STAGED_BIN  := $(APP)/resources/oskol-serve
 # Resolved lazily (after `appimage` has produced it).
 APPIMAGE     = $(firstword $(wildcard $(APP)/dist/*.AppImage))
 
+# Windows (cross-compiled from Linux with mingw-w64; native Windows works too).
+WIN_TARGET     ?= x86_64-pc-windows-gnu
+WIN_CORE_BIN   := target/$(WIN_TARGET)/release/oskol-serve.exe
+WIN_STAGED_BIN := $(APP)/resources/oskol-serve.exe
+
 INSTALLED_APPIMAGE := $(LIBDIR)/OskolKhan.AppImage
 INSTALLED_ICON     := $(LIBDIR)/oskolkhan.png
 DESKTOP_FILE       := $(DESKTOP_DIR)/oskolkhan.desktop
 
-.PHONY: all help deps core stage build appimage install uninstall clean pkg
+.PHONY: all help deps core stage build appimage core-win stage-win windows install uninstall clean pkg
 
 all: appimage
 
 help:
-	@echo "Targets: core stage build appimage install pkg uninstall clean"
+	@echo "Targets: core stage build appimage windows install pkg uninstall clean"
 	@echo "  make appimage   # release sidecar + staged + electron-builder AppImage"
+	@echo "  make windows    # Windows sidecar + NSIS installer + portable .exe (in $(APP)/dist)"
 	@echo "  make install    # + copy into $(LIBDIR) and write $(DESKTOP_FILE)"
 	@echo "  make pkg        # build + install an Arch package (PKGBUILD, pacman-tracked)"
 	@echo "Vars: PREFIX=$(PREFIX)  LIBDIR=$(LIBDIR)  DESKTOP_DIR=$(DESKTOP_DIR)  BIND_IFACE=$(BIND_IFACE)"
@@ -62,6 +69,23 @@ build: deps
 appimage: stage deps
 	$(PNPM) --dir $(APP) run appimage
 	@echo "Built: $(APPIMAGE)"
+
+# Windows sidecar. From Linux this needs `rustup target add $(WIN_TARGET)` and
+# mingw-w64 (Arch: mingw-w64-gcc, Debian/Ubuntu: mingw-w64) for ring/zstd's C code.
+# On a native Windows host use WIN_TARGET=x86_64-pc-windows-msvc.
+core-win:
+	$(CARGO) build --release -p oskol-core --bin oskol-serve --target $(WIN_TARGET)
+
+stage-win: core-win
+	@mkdir -p $(APP)/resources
+	cp -f $(WIN_CORE_BIN) $(WIN_STAGED_BIN)
+
+# Windows x64: NSIS installer (OskolKhan-Setup-X.Y.Z-x64.exe) + portable .exe.
+# electron-builder downloads its own NSIS; from Linux it may also need wine for
+# stamping the exe icon/metadata.
+windows: stage-win deps
+	$(PNPM) --dir $(APP) run win
+	@ls -1 $(APP)/dist/*.exe
 
 install: appimage
 	@test -n "$(APPIMAGE)" || { echo "ERROR: no AppImage found in $(APP)/dist"; exit 1; }
@@ -100,5 +124,5 @@ pkg:
 
 clean:
 	rm -rf $(APP)/out $(APP)/dist
-	rm -f $(STAGED_BIN)
+	rm -f $(STAGED_BIN) $(WIN_STAGED_BIN)
 	rm -rf pkg src *.pkg.tar.*

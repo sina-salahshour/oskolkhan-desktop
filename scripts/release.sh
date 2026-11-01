@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
 # release.sh — bump the version everywhere, build the release artifacts (Arch
-# .pkg.tar.zst + portable .AppImage), then push the commit + tag to GitHub and
-# cut a release with both attached.
+# .pkg.tar.zst, portable .AppImage, Windows x64 installer + portable .exe), then
+# push the commit + tag to GitHub and cut a release with all of them attached.
 #
 # Usage:
 #   scripts/release.sh <major|minor|patch|X.Y.Z> [options]
 #
 # Options:
-#   --no-build     skip the makepkg build; release the source tag with no asset
+#   --no-build     skip all builds; release the source tag with no asset
+#   --no-windows   skip the Windows build (no .exe assets)
 #   --draft        create the GitHub release as a draft
 #   --prerelease   mark the GitHub release as a pre-release
 #   --notes <txt>  use <txt> as the release notes instead of auto-generated ones
@@ -20,6 +21,8 @@
 #   app/package.json                           PKGBUILD (pkgver; pkgrel reset to 1)
 #
 # Requirements: git, gh (authenticated), cargo, pnpm, node, makepkg (for the build).
+# Windows build (cross-compiled): rustup target x86_64-pc-windows-gnu, mingw-w64
+# (Arch: mingw-w64-gcc) and wine (NSIS needs it on Linux). Skip with --no-windows.
 set -euo pipefail
 
 # --- locate repo root ------------------------------------------------------
@@ -35,6 +38,7 @@ info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 # --- parse args ------------------------------------------------------------
 BUMP=""
 DO_BUILD=1
+DO_WINDOWS=1
 DRAFT=""
 PRERELEASE=""
 NOTES=""
@@ -44,11 +48,12 @@ while [ $# -gt 0 ]; do
 		major|minor|patch) BUMP="$1" ;;
 		[0-9]*.[0-9]*.[0-9]*) BUMP="$1" ;;
 		--no-build) DO_BUILD=0 ;;
+		--no-windows) DO_WINDOWS=0 ;;
 		--draft) DRAFT="--draft" ;;
 		--prerelease) PRERELEASE="--prerelease" ;;
 		--notes) shift; NOTES="${1:-}" ;;
 		-y|--yes) ASSUME_YES=1 ;;
-		-h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) die "unknown argument: $1 (want major|minor|patch|X.Y.Z)" ;;
 	esac
 	shift
@@ -88,7 +93,7 @@ info "Release plan"
 echo "    version : $CUR  ->  $NEWV"
 echo "    branch  : $BRANCH"
 echo "    tag     : $TAG"
-echo "    build   : $([ $DO_BUILD -eq 1 ] && echo 'yes (makepkg, asset attached)' || echo 'no')"
+echo "    build   : $([ $DO_BUILD -eq 1 ] && echo "yes (pkg + AppImage$([ $DO_WINDOWS -eq 1 ] && echo ' + Windows .exe'))" || echo 'no')"
 echo "    remote  : $(git remote get-url origin)"
 if [ "$ASSUME_YES" -ne 1 ]; then
 	printf 'Proceed? [y/N] '
@@ -119,7 +124,8 @@ check=$(printf '%s\n' \
 [ "$check" = "$NEWV" ] || { git checkout -- . ; die "version files disagree after bump: [$check]"; }
 
 # --- build the artifacts (optional) ----------------------------------------
-# Two release assets: the Arch .pkg.tar.zst (pacman) and a portable .AppImage.
+# Release assets: the Arch .pkg.tar.zst (pacman), a portable .AppImage and (unless
+# --no-windows) the Windows NSIS installer + portable .exe.
 ASSETS=()
 if [ "$DO_BUILD" -eq 1 ]; then
 	info "Building Arch package (makepkg)…"
@@ -147,6 +153,20 @@ if [ "$DO_BUILD" -eq 1 ]; then
 	[ -n "$appimage" ] || { git checkout -- . ; die "AppImage built but artifact not found"; }
 	ASSETS+=("$appimage")
 	info "Built $appimage"
+
+	if [ "$DO_WINDOWS" -eq 1 ]; then
+		info "Building Windows installer + portable exe (electron-builder --win)…"
+		rm -f app/dist/*.exe 2>/dev/null || true
+		if ! WINEDEBUG="${WINEDEBUG:--all}" make windows; then
+			git checkout -- .
+			die "Windows build failed — version bump reverted (use --no-windows to skip)"
+		fi
+		for exe in app/dist/OskolKhan-Setup-"$NEWV"-*.exe app/dist/OskolKhan-"$NEWV"-*-portable.exe; do
+			[ -f "$exe" ] || { git checkout -- . ; die "Windows build finished but $exe not found"; }
+			ASSETS+=("$exe")
+			info "Built $exe"
+		done
+	fi
 fi
 
 # --- commit, tag, push -----------------------------------------------------

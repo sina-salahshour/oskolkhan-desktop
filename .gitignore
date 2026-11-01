@@ -21,3 +21,4 @@ node_modules
 /src/
 *.pkg.tar.*
 
+/app/resources/oskol-serve.exe

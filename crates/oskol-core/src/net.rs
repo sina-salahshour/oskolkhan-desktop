@@ -111,11 +111,23 @@ pub(crate) fn maybe_bind_interface(builder: reqwest::ClientBuilder) -> reqwest::
     match std::env::var("OSKOL_BIND_INTERFACE") {
         Ok(iface) if !iface.trim().is_empty() => {
             let iface = iface.trim().to_string();
-            tracing::info!("OSKOL_BIND_INTERFACE set: binding HTTP clients to {iface}");
-            builder.interface(&iface)
+            bind_to(builder, &iface)
         }
         _ => builder,
     }
+}
+
+/// SO_BINDTODEVICE (reqwest's `interface`) only exists on Linux-like targets.
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "fuchsia"))]
+fn bind_to(builder: reqwest::ClientBuilder, iface: &str) -> reqwest::ClientBuilder {
+    tracing::info!("OSKOL_BIND_INTERFACE set: binding HTTP clients to {iface}");
+    builder.interface(iface)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "fuchsia")))]
+fn bind_to(builder: reqwest::ClientBuilder, iface: &str) -> reqwest::ClientBuilder {
+    tracing::warn!("OSKOL_BIND_INTERFACE={iface} ignored: interface binding is unsupported on this OS");
+    builder
 }
 
 /// HTTP client for kickstart sources and other public endpoints (DoH resolution).

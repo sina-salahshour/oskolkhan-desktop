@@ -92,6 +92,19 @@ make install             # + copy into ~/.local and write a .desktop entry
 make uninstall
 ```
 
+**Windows x64 (cross-built from Linux):**
+
+```bash
+# one-time: rustup target add x86_64-pc-windows-gnu
+#           + mingw-w64 (Arch: mingw-w64-gcc) + wine (NSIS needs it on Linux)
+make windows             # -> app/dist/OskolKhan-Setup-X.Y.Z-x64.exe (installer)
+                         #    app/dist/OskolKhan-X.Y.Z-x64-portable.exe
+```
+
+On a Windows host: `make windows WIN_TARGET=x86_64-pc-windows-msvc` (or see the
+steps in `.github/workflows/windows-release.yml`). `OSKOL_BIND_INTERFACE` is
+Linux-only and ignored on Windows.
+
 ## Release
 
 ```bash
@@ -102,9 +115,15 @@ scripts/release.sh 1.0.0 --no-build -y
 
 Bumps the version in lockstep across `package.json`, `app/package.json`,
 `Cargo.toml` (`[workspace.package]`) and `PKGBUILD`, builds the package, then
-commits, tags, pushes `main`, and cuts a `gh release` with the `.pkg.tar.zst`
-attached. Reverts the bump if the build fails. `scripts/release.sh --help` for
-all options.
+commits, tags, pushes `main`, and cuts a `gh release` with the `.pkg.tar.zst`,
+`.AppImage` and the Windows installer + portable `.exe` attached (`--no-windows`
+to skip those). Reverts the bump if the build fails. `scripts/release.sh --help`
+for all options.
+
+The **Windows release** GitHub Actions workflow also builds the Windows
+installer on a native Windows runner whenever a release is published and
+attaches it (replacing any locally built `.exe`). Run it manually from the
+Actions tab with a `tag` input to add a Windows build to an existing release.
 
 ## Operational notes
 
